@@ -222,8 +222,11 @@ def is_in_trading_hours(stock_code, now_time):
 
 
 def get_signal_time(now_time, stock_code):
-    h, m = now_time.split(':')
-    t = int(h) * 60 + int(m)
+    try:
+        hh, mm = now_time.split(':')
+        t = int(hh) * 60 + int(mm)
+    except Exception:
+        return None
     if is_hk_stock(stock_code):
         if 715 <= t <= 720:
             return '11:55'
@@ -231,7 +234,7 @@ def get_signal_time(now_time, stock_code):
             return '15:55'
         return None
     else:
-        if 895 <= t <= 900:
+        if t == 895:
             return '14:55'
         return None
 
@@ -481,12 +484,14 @@ def handlebar(ContextInfo):
     # Heartbeat: print once every 30 minutes so user knows strategy is alive
     _heartbeat(now_time)
 
+    sig_ran_today = False
     for stock_code in _pool_codes:
         if not is_in_trading_hours(stock_code, now_time):
             continue
         sig_time = get_signal_time(now_time, stock_code)
         if sig_time is None:
             continue
+        sig_ran_today = True
         time_key = '%s:%s:%s' % (today, stock_code, sig_time)
         if g.last_signal_time == time_key:
             continue
@@ -501,6 +506,7 @@ def handlebar(ContextInfo):
 
         _process_signal(stock_code, bar, today)
 
+    # End-of-day state write (after 15:00)
     if now_time >= '15:00':
         state = ensure_state()
         write_state(state)
@@ -550,6 +556,18 @@ def _process_signal(stock_code, bar, today):
     ind = calc_indicators(open_arr, high_arr, low_arr, close_arr, vol_arr)
     i = len(close_arr) - 1
     sig_S1, sig_S2, sig_S3, sig_B1, sig_B2, sig_B3 = calc_signals(ind, i)
+
+    # DIAGNOSTIC: log signals at decision time so user can see why no trade fires
+    sig_list = []
+    if sig_S1: sig_list.append('S1')
+    if sig_S2: sig_list.append('S2')
+    if sig_S3: sig_list.append('S3')
+    if sig_B1: sig_list.append('B1')
+    if sig_B2: sig_list.append('B2')
+    if sig_B3: sig_list.append('B3')
+    sig_str = ','.join(sig_list) if sig_list else 'NONE'
+    _log_print('INFO', '[SIG] %s signals=%s pos=%d price=%.2f',
+               stock_code, sig_str, cur_pos, current_price)
 
     try:
         asset = xtrading.query_account_data()
