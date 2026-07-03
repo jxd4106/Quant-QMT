@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# IDE
+.vscode/
+
+# QMT runtime
+state.json
+state.json.tmp
+override.json
+v8_state.json
+v8_override.json
+logs/
+*.log
+
+# macOS
+.DS_Store
