@@ -5,7 +5,8 @@
 
 ## 当前状态
 - ✅ 已完成：PRD（详细版+摘要版+dev版）、技术方案、测试决策蓝图
-- ✅ 已完成：Git 协作配置 → https://github.com/jxd4106/Quant-QMT (main 分支, 已推送)
+- ✅ 已完成：Git 协作配置 → https://github.com/jxd4106/Quant-QMT (main 分支, 2 commits pushed)
+- ✅ 已完成：`half_position_rolling.py` (744 行) — compile/ruff/167 tests 全过
 - ✅ 已完成：`__file__` 清除 → `BASE_DIR` 硬编码
 - ✅ 已完成：`logging` 清除 → `_log_print` + print
 - ✅ 已完成：`passorder` 清除 → `xtrading.order_stock` 兼容链
