@@ -12,13 +12,9 @@ import os
 import json
 import time
 
-# QMT internal imports -- must be at module level, NOT wrapped in try/except.
-# QMT runs strategy via exec(), which breaks try/except import paths.
-# On non-QMT dev machines, this import will fail -- that's expected.
-try:
-    from xtquant import xtdata
-except ImportError:
-    pass  # dev machine, tests use mock data only
+# QMT internal imports -- module-level, NOT in try/except.
+# QMT runs strategy via exec() so the import MUST be at top level.
+from xtquant import xtdata
 
 # ============================================================
 # 1. Constants & Config
