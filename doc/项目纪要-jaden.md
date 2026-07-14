@@ -5,14 +5,9 @@
 
 ## 当前状态
 - ✅ 已完成：PRD（详细版+摘要版+dev版）、技术方案、测试决策蓝图
-- ✅ 已完成：Git 协作配置 → https://github.com/jxd4106/Quant-QMT (main 分支, 2 commits pushed)
-- ✅ 已完成：`half_position_rolling.py` (744 行) — compile/ruff/167 tests 全过
-- ✅ 已完成：`__file__` 清除 → `BASE_DIR` 硬编码
-- ✅ 已完成：`logging` 清除 → `_log_print` + print
-- ✅ 已完成：`passorder` 清除 → `xtrading.order_stock` 兼容链
-- ✅ 已完成：`from xtquant import xtdata` module-level 直接导入
-- ✅ 已完成：每 30 分钟心跳日志
-- 14 项 MVP 功能全部实现
+- ✅ 已完成：`half_position_rolling.py` (758 行) — xtdata 已去 try/except，[SIG] 诊断日志已加，14:55 信号触发窗口已修复
+- ✅ 已完成：Git 协作配置 → https://github.com/jxd4106/Quant-QMT (6 commits pushed)
+- ✅ 已完成：memory/no-redundant-confirmation.md — 不再无意义重复确认
 
 ## 决策记录
 - [07-14-2026 13:25] 禁止无意义重复确认｜背景：多次在任务已完成后反复 echo Done/OK/Complete，浪费时间和上下文｜结论：已写入 memory/no-redundant-confirmation.md。完成任务后用一句文本说明即可，不再跑多余 bash 确认｜来源：用户指出 + AI
