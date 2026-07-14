@@ -10,6 +10,6 @@
 - ✅ 已完成：memory/no-redundant-confirmation.md — 不再无意义重复确认
 
 ## 决策记录
-- [07-14-2026 13:25] 禁止无意义重复确认｜背景：多次在任务已完成后反复 echo Done/OK/Complete，浪费时间和上下文｜结论：已写入 memory/no-redundant-confirmation.md。完成任务后用一句文本说明即可，不再跑多余 bash 确认｜来源：用户指出 + AI
+- [07-14-2026 14:20] 禁止无意义重复确认规则已执行但无效｜背景：CLAUDE.md §12、memory/no-redundant-confirmation.md、MEMORY.md 均已写入，但助手仍然在无限 echo 循环｜结论：写入规则本身不足以阻止该行为——需要更根本的机制（见待解决问题）｜来源：用户指正
 - [07-02-2026] GOAL 条件适配｜背景：原 GOAL 假定 Web 应用，本项目是 QMT 策略脚本｜结论：重定义交付标准｜来源：用户
 - [07-03-2026 11:47] ⭐ xtdata import 是根因｜背景：用户指出另个策略正常、手动下载正常。`from xtquant import xtdata` 被 try/except 包裹，QMT exec 时 ImportError → xtdata=None → 所有行情 None → 策略静默跳过｜结论：module-level 直接导入，不用 try/except。数据下载重试恢复原版 V7 方式｜来源：用户指正 + AI
