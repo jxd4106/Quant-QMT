@@ -419,6 +419,10 @@ def _heartbeat(now_time):
     last_min = int(h) * 60 + int(m)
     h2, m2 = now_time.split(':')
     now_min = int(h2) * 60 + int(m2)
+    # Reset across midnight boundary (e.g. 14:55 → next day 09:30)
+    if now_min < last_min:
+        g.last_heartbeat = '00:00'
+        last_min = 0
     if now_min - last_min >= 30:
         g.last_heartbeat = now_time
         _log_print('INFO', '[HEARTBEAT] strategy running at %s', now_time)
