@@ -557,18 +557,6 @@ def _process_signal(stock_code, bar, today):
     i = len(close_arr) - 1
     sig_S1, sig_S2, sig_S3, sig_B1, sig_B2, sig_B3 = calc_signals(ind, i)
 
-    # DIAGNOSTIC: log signals at decision time so user can see why no trade fires
-    sig_list = []
-    if sig_S1: sig_list.append('S1')
-    if sig_S2: sig_list.append('S2')
-    if sig_S3: sig_list.append('S3')
-    if sig_B1: sig_list.append('B1')
-    if sig_B2: sig_list.append('B2')
-    if sig_B3: sig_list.append('B3')
-    sig_str = ','.join(sig_list) if sig_list else 'NONE'
-    _log_print('INFO', '[SIG] %s signals=%s pos=%d price=%.2f',
-               stock_code, sig_str, cur_pos, current_price)
-
     try:
         asset = xtrading.query_account_data()
         if asset is None:
@@ -586,6 +574,18 @@ def _process_signal(stock_code, bar, today):
     except Exception:
         cur_pos = 0
         profit_rate = 0.0
+
+    # DIAGNOSTIC: log signals at decision time so user can see why no trade fires
+    sig_list = []
+    if sig_S1: sig_list.append('S1')
+    if sig_S2: sig_list.append('S2')
+    if sig_S3: sig_list.append('S3')
+    if sig_B1: sig_list.append('B1')
+    if sig_B2: sig_list.append('B2')
+    if sig_B3: sig_list.append('B3')
+    sig_str = ','.join(sig_list) if sig_list else 'NONE'
+    _log_print('INFO', '[SIG] %s signals=%s pos=%d price=%.2f',
+               stock_code, sig_str, cur_pos, current_price)
 
     cfg = STOCK_POOL.get(stock_code, {})
     weight = cfg.get('weight', 0.0)
