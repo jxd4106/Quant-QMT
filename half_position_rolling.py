@@ -406,7 +406,7 @@ def _heartbeat(now_time):
     last_min = int(h) * 60 + int(m)
     h2, m2 = now_time.split(':')
     now_min = int(h2) * 60 + int(m2)
-    # Reset across midnight boundary (e.g. 14:55 → next day 09:30)
+    # Reset across midnight boundary (e.g. 14:55 => next day 09:30)
     if now_min < last_min:
         g.last_heartbeat = '00:00'
         last_min = 0
@@ -607,7 +607,7 @@ def _process_signal(stock_code, bar, today):
         _log_print('WARN', '[LIMIT] %s daily trade limit reached', stock_code)
         return
 
-    # === B2 stop-loss: if price drops ≥ 3% from B2 entry, sell the B2 portion ===
+    # === B2 stop-loss: if price drops >= 3% from B2 entry, sell the B2 portion ===
     if g.b2_used.get(stock_code) and g.last_b2_price.get(stock_code) is not None:
         b2_entry = g.last_b2_price[stock_code]
         if current_price <= b2_entry * 0.97 and cur_pos > 0:
@@ -623,7 +623,7 @@ def _process_signal(stock_code, bar, today):
                     g.b2_used[stock_code] = False
                     g.last_b2_price[stock_code] = None
                     g.last_b2_qty[stock_code] = 0
-                    _log_print('WARN', '[B2-STOP] %s B2 stop-loss %.2f→%.2f (-%.1f%%) sell=%d restored_sell=%d',
+                    _log_print('WARN', '[B2-STOP] %s B2 stop-loss %.2f => %.2f (-%.1f%%) sell=%d restored_sell=%d',
                                stock_code, b2_entry, current_price,
                                (1 - current_price / b2_entry) * 100, sell_b2_qty,
                                g.last_sell_qty.get(stock_code, 0))
