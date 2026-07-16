@@ -10,7 +10,8 @@ sys.path.insert(0, '.')
 from half_position_rolling import (
     init, handlebar, G, _process_signal,
     calc_indicators, calc_signals, limit_price_sell, limit_price_buy,
-    STOCK_POOL, TARGET_PCT,
+    STOCK_POOL, TARGET_PCT, calc_initial_buy_qty, calc_repurchase_qty,
+    calc_b2_repurchase_qty,
 )
 
 
@@ -119,6 +120,10 @@ class TestOverrideFlow:
                     'trade_count_today': 0,
                     'sold_today': False,
                     'stop_loss_base': 95.5,
+                    'last_sell_qty': 0,
+                    'last_b2_price': None,
+                    'last_b2_qty': 0,
+                    'b2_used': False,
                 }
             },
             'daily_stop_count': 1,

@@ -8,7 +8,8 @@ sys.path.insert(0, '.')
 from half_position_rolling import (
     read_state, write_state, ensure_state, reset_daily_state,
     process_override, check_stop_loss, calc_indicators, calc_signals,
-    STOCK_POOL, state_file_path, override_file_path, _default_state, G
+    STOCK_POOL, state_file_path, override_file_path, _default_state, G,
+    calc_initial_buy_qty, calc_repurchase_qty,
 )
 import numpy as np
 
@@ -90,7 +91,13 @@ class TestDefaultState:
             assert 'stop_loss_triggered' in stock_s
             assert 'trade_count_today' in stock_s
             assert 'sold_today' in stock_s
+            assert 'last_sell_qty' in stock_s
+            assert 'last_b2_price' in stock_s
+            assert 'last_b2_qty' in stock_s
+            assert 'b2_used' in stock_s
             assert stock_s['stop_loss_triggered'] is False
+            assert stock_s['last_sell_qty'] == 0
+            assert stock_s['b2_used'] is False
 
     def test_reset_daily(self):
         """C-EDGE-012 · P0 · 跨日重置"""
@@ -151,15 +158,13 @@ class TestDataEdgeCases:
         assert calc_sell_qty(0, 100) == 0
 
     def test_zero_lot_order(self):
-        """C-EDGE-014 · P1 · 下单量<1手"""
-        from half_position_rolling import calc_order_qty
-        qty = calc_order_qty('B1', 100, 10, 0, 500, 100)
+        """C-EDGE-014 · P1 · 下单量<1手 — 测试建仓边界"""
+        qty = calc_initial_buy_qty(100, 1.0, 10, 100)
         assert qty == 0 or qty >= 0  # either 0 or round lot
 
     def test_order_none_handling(self):
-        """C-EDGE-015 · P1 · 下单返回None场景 - calc_order_qty returns 0 when invalid"""
-        from half_position_rolling import calc_order_qty
-        qty = calc_order_qty('B1', 0, 0, 0, 0, 100)
+        """C-EDGE-015 · P1 · 无效输入 → 0"""
+        qty = calc_initial_buy_qty(0, 0, 0, 100)
         assert qty == 0
 
     def test_negative_profit_rate(self):
