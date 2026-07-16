@@ -132,19 +132,19 @@ def calc_signals(ind, i):
 # ============================================================
 
 def calc_initial_buy_qty(total_asset, weight, price, lot_size):
-    """建仓：满仓买入 = total_asset * weight / price."""
+    """Initial entry: full position = total_asset * weight / price."""
     if price <= 0:
         return 0
     return align_lot_size(int(total_asset * weight / price), lot_size)
 
 
 def calc_repurchase_qty(last_sell_qty, lot_size):
-    """回补：买回待补余额."""
+    """Repurchase: buy back remaining last_sell_qty."""
     return align_lot_size(last_sell_qty, lot_size)
 
 
 def calc_b2_repurchase_qty(last_sell_qty, lot_size):
-    """B2 回补：买回待补余额的 1/3."""
+    """B2 repurchase: buy back 1/3 of last_sell_qty."""
     return align_lot_size(int(last_sell_qty * B2_RATIO), lot_size)
 
 
