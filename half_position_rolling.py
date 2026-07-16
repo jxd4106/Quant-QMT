@@ -25,7 +25,7 @@ SHADOW_PCT = 0.40
 VOL_RATIO_LOW = 0.7
 VOL_RATIO_MID = 1.5
 VOL_RATIO_HIGH = 2.0
-TARGET_PCT = 0.5
+TARGET_PCT = 1.0
 B2_RATIO = 1.0 / 3
 STOP_LOSS_PCT = 0.15
 MAX_TRADES_PER_DAY = 50
@@ -131,29 +131,21 @@ def calc_signals(ind, i):
 # 3. Position Sizing
 # ============================================================
 
-def calc_target_value(total_asset, weight):
-    return total_asset * weight * TARGET_PCT
-
-
-def calc_ideal_buy_qty(target_value, price, cur_position, lot_size):
+def calc_initial_buy_qty(total_asset, weight, price, lot_size):
+    """建仓：满仓买入 = total_asset * weight / price."""
     if price <= 0:
         return 0
-    target_shares = int(target_value / price)
-    ideal = max(target_shares - cur_position, 0)
-    return align_lot_size(ideal, lot_size)
+    return align_lot_size(int(total_asset * weight / price), lot_size)
 
 
-def calc_b2_buy_qty(ideal_buy_qty, lot_size):
-    return align_lot_size(int(ideal_buy_qty * B2_RATIO), lot_size)
+def calc_repurchase_qty(last_sell_qty, lot_size):
+    """回补：买回待补余额."""
+    return align_lot_size(last_sell_qty, lot_size)
 
 
-def normalize_weights(stock_pool, target_pct=None):
-    if target_pct is None:
-        target_pct = TARGET_PCT
-    total_target = sum(cfg['weight'] * target_pct for cfg in stock_pool.values())
-    if total_target > 0:
-        return min(1.0, 1.0 / total_target)
-    return 1.0
+def calc_b2_repurchase_qty(last_sell_qty, lot_size):
+    """B2 回补：买回待补余额的 1/3."""
+    return align_lot_size(int(last_sell_qty * B2_RATIO), lot_size)
 
 
 def align_lot_size(qty, lot_size):
@@ -176,22 +168,6 @@ def calc_max_by_cash(cash, price, lot_size, buy_fee_rate=0.0003, hk_fixed_fee=0.
     if cash_after_fee <= 0:
         return 0
     return int(cash_after_fee / price / lot_size) * lot_size
-
-
-def calc_order_qty(signal_type, target_value, price, cur_position, cash, lot_size,
-                   buy_fee_rate=0.0003, hk_fixed_fee=0.0, scale=1.0):
-    if price <= 0:
-        return 0
-    tv_scaled = target_value * scale
-    ideal_buy = calc_ideal_buy_qty(tv_scaled, price, cur_position, lot_size)
-    if signal_type.startswith('S'):
-        return calc_sell_qty(cur_position, lot_size)
-    elif signal_type == 'B2':
-        buy_qty = calc_b2_buy_qty(ideal_buy, lot_size)
-    else:
-        buy_qty = ideal_buy
-    max_cash = calc_max_by_cash(cash, price, lot_size, buy_fee_rate, hk_fixed_fee)
-    return min(buy_qty, max_cash)
 
 
 def limit_price_sell(current_price):
@@ -251,7 +227,9 @@ def _default_state(today):
     return {
         'date': today,
         'stocks': {code: {'stop_loss_triggered': False, 'trade_count_today': 0,
-                           'sold_today': False, 'stop_loss_base': None}
+                           'sold_today': False, 'stop_loss_base': None,
+                           'last_sell_qty': 0, 'last_b2_price': None,
+                           'last_b2_qty': 0, 'b2_used': False}
                    for code in STOCK_POOL},
         'daily_stop_count': 0,
     }
@@ -294,6 +272,11 @@ def ensure_state():
                 'stop_loss_triggered': False, 'trade_count_today': 0,
                 'sold_today': False, 'stop_loss_base': None,
             }
+        s = state['stocks'].setdefault(code, {})
+        s.setdefault('last_sell_qty', 0)
+        s.setdefault('last_b2_price', None)
+        s.setdefault('last_b2_qty', 0)
+        s.setdefault('b2_used', False)
     state.setdefault('daily_stop_count', 0)
     write_state(state)
     return state
@@ -403,6 +386,10 @@ class G:
     daily_stop_count = 0
     last_date = ''
     last_heartbeat = ''
+    last_sell_qty = {}
+    last_b2_price = {}
+    last_b2_qty = {}
+    b2_used = {}
 
 
 g = G()
@@ -518,6 +505,10 @@ def _sync_g_from_state(state, today):
         g.trade_count_today[code] = s.get('trade_count_today', 0)
         g.sold_today[code] = s.get('sold_today', False)
         g.stop_loss_triggered[code] = s.get('stop_loss_triggered', False)
+        g.last_sell_qty[code] = s.get('last_sell_qty', 0)
+        g.last_b2_price[code] = s.get('last_b2_price', None)
+        g.last_b2_qty[code] = s.get('last_b2_qty', 0)
+        g.b2_used[code] = s.get('b2_used', False)
     g.daily_stop_count = state.get('daily_stop_count', 0)
     g.last_date = today
 
@@ -584,8 +575,10 @@ def _process_signal(stock_code, bar, today):
     if sig_B2: sig_list.append('B2')
     if sig_B3: sig_list.append('B3')
     sig_str = ','.join(sig_list) if sig_list else 'NONE'
-    _log_print('INFO', '[SIG] %s signals=%s pos=%d price=%.2f',
-               stock_code, sig_str, cur_pos, current_price)
+    _log_print('INFO', '[SIG] %s signals=%s pos=%d price=%.2f last_sell=%d b2_used=%s',
+               stock_code, sig_str, cur_pos, current_price,
+               g.last_sell_qty.get(stock_code, 0),
+               'Y' if g.b2_used.get(stock_code) else 'N')
 
     cfg = STOCK_POOL.get(stock_code, {})
     weight = cfg.get('weight', 0.0)
@@ -614,10 +607,35 @@ def _process_signal(stock_code, bar, today):
         _log_print('WARN', '[LIMIT] %s daily trade limit reached', stock_code)
         return
 
-    scale = normalize_weights(STOCK_POOL)
-    target_value = calc_target_value(total_asset, weight)
+    # === B2 stop-loss: if price drops ≥ 3% from B2 entry, sell the B2 portion ===
+    if g.b2_used.get(stock_code) and g.last_b2_price.get(stock_code) is not None:
+        b2_entry = g.last_b2_price[stock_code]
+        if current_price <= b2_entry * 0.97 and cur_pos > 0:
+            b2_bought = g.last_b2_qty.get(stock_code, 0)
+            sell_b2_qty = min(b2_bought, cur_pos)
+            if sell_b2_qty > 0:
+                lp = limit_price_sell(current_price)
+                order_id = _do_order(stock_code, 24, sell_b2_qty, lp)
+                if order_id:
+                    g.trade_count_today[stock_code] = (g.trade_count_today.get(stock_code, 0) + 1)
+                    # Undo B2: restore last_sell_qty by adding back the B2 portion
+                    g.last_sell_qty[stock_code] = g.last_sell_qty.get(stock_code, 0) + sell_b2_qty
+                    g.b2_used[stock_code] = False
+                    g.last_b2_price[stock_code] = None
+                    g.last_b2_qty[stock_code] = 0
+                    _log_print('WARN', '[B2-STOP] %s B2 stop-loss %.2f→%.2f (-%.1f%%) sell=%d restored_sell=%d',
+                               stock_code, b2_entry, current_price,
+                               (1 - current_price / b2_entry) * 100, sell_b2_qty,
+                               g.last_sell_qty.get(stock_code, 0))
+                    state = ensure_state()
+                    state['stocks'][stock_code]['last_sell_qty'] = g.last_sell_qty[stock_code]
+                    state['stocks'][stock_code]['b2_used'] = False
+                    state['stocks'][stock_code]['last_b2_price'] = None
+                    state['stocks'][stock_code]['last_b2_qty'] = 0
+                    write_state(state)
+            return  # Skip buys after B2 stop-loss
 
-    # Sell priority (F9): S1 > S2 > S3
+    # === Sell priority (F9): S1 > S2 > S3 ===
     if cur_pos > 0 and not g.sold_today.get(stock_code, False):
         action = None
         if sig_S1:
@@ -634,10 +652,23 @@ def _process_signal(stock_code, bar, today):
                 if order_id:
                     g.trade_count_today[stock_code] = (g.trade_count_today.get(stock_code, 0) + 1)
                     g.sold_today[stock_code] = True
-                    _log_print('INFO', '[SELL] %s %s: %d @ %.2f', action, stock_code, sell_qty, lp)
+                    # Start new repurchase cycle
+                    g.last_sell_qty[stock_code] = sell_qty
+                    g.b2_used[stock_code] = False
+                    g.last_b2_price[stock_code] = None
+                    g.last_b2_qty[stock_code] = 0
+                    _log_print('INFO', '[SELL] %s %s: %d @ %.2f last_sell=%d',
+                               action, stock_code, sell_qty, lp, sell_qty)
+                    # Persist state
+                    state = ensure_state()
+                    state['stocks'][stock_code]['last_sell_qty'] = sell_qty
+                    state['stocks'][stock_code]['b2_used'] = False
+                    state['stocks'][stock_code]['last_b2_price'] = None
+                    state['stocks'][stock_code]['last_b2_qty'] = 0
+                    write_state(state)
             return  # No buy on same day after sell
 
-    # Buy: B1 > B2 > B3
+    # === Buy: B1 > B2 > B3 ===
     buy_action = None
     if sig_B1:
         buy_action = 'B1'
@@ -647,14 +678,61 @@ def _process_signal(stock_code, bar, today):
         buy_action = 'B3'
 
     if buy_action:
-        buy_qty = calc_order_qty(buy_action, target_value, current_price,
-                                 cur_pos, available_cash, lot_size, scale=scale)
+        last_sell = g.last_sell_qty.get(stock_code, 0)
+
+        if cur_pos == 0:
+            # Initial entry: full position
+            raw_qty = calc_initial_buy_qty(total_asset, weight, current_price, lot_size)
+        elif last_sell > 0:
+            # Repurchase: buy back remaining last_sell_qty
+            if buy_action == 'B2':
+                if g.b2_used.get(stock_code):
+                    _log_print('INFO', '[B2-SKIP] %s B2 already used this cycle', stock_code)
+                    return
+                raw_qty = calc_b2_repurchase_qty(last_sell, lot_size)
+            else:
+                raw_qty = calc_repurchase_qty(last_sell, lot_size)
+        else:
+            # Already full position, nothing to buy
+            _log_print('INFO', '[BUY-SKIP] %s already full, last_sell=0', stock_code)
+            return
+
+        # Cash constraint
+        max_cash_qty = calc_max_by_cash(available_cash, current_price, lot_size)
+        buy_qty = min(raw_qty, max_cash_qty)
+
         if buy_qty > 0:
             lp = limit_price_buy(current_price)
             order_id = _do_order(stock_code, 23, buy_qty, lp)
             if order_id:
                 g.trade_count_today[stock_code] = (g.trade_count_today.get(stock_code, 0) + 1)
-                _log_print('INFO', '[BUY] %s %s: %d @ %.2f', buy_action, stock_code, buy_qty, lp)
+                # Update repurchase state
+                if cur_pos > 0:
+                    remaining = last_sell - buy_qty
+                    g.last_sell_qty[stock_code] = max(remaining, 0)
+                    if buy_action == 'B2':
+                        g.b2_used[stock_code] = True
+                        g.last_b2_price[stock_code] = current_price
+                        g.last_b2_qty[stock_code] = buy_qty
+                    if g.last_sell_qty.get(stock_code, 0) <= 0:
+                        # Fully repurchased, reset cycle
+                        g.last_sell_qty[stock_code] = 0
+                        g.b2_used[stock_code] = False
+                        g.last_b2_price[stock_code] = None
+                        g.last_b2_qty[stock_code] = 0
+                _log_print('INFO', '[BUY] %s %s: %d @ %.2f remaining_sell=%d',
+                           buy_action, stock_code, buy_qty, lp,
+                           g.last_sell_qty.get(stock_code, 0))
+                # Persist state
+                state = ensure_state()
+                state['stocks'][stock_code]['last_sell_qty'] = g.last_sell_qty.get(stock_code, 0)
+                state['stocks'][stock_code]['b2_used'] = g.b2_used.get(stock_code, False)
+                state['stocks'][stock_code]['last_b2_price'] = g.last_b2_price.get(stock_code, None)
+                state['stocks'][stock_code]['last_b2_qty'] = g.last_b2_qty.get(stock_code, 0)
+                write_state(state)
+        else:
+            _log_print('INFO', '[BUY-SKIP] %s raw=%d cash_max=%d cash=%.0f price=%.2f',
+                       stock_code, raw_qty, max_cash_qty, available_cash, current_price)
 
 
 def _get_history_bars(stock_code, count=60):
