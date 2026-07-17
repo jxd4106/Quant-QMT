@@ -410,7 +410,7 @@ def _heartbeat(now_time):
     if now_min < last_min:
         g.last_heartbeat = '00:00'
         last_min = 0
-    if now_min - last_min >= 30:
+    if now_min - last_min >= 10:
         g.last_heartbeat = now_time
         _log_print('INFO', '[HEARTBEAT] strategy running at %s', now_time)
 
