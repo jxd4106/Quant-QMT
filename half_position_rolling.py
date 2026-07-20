@@ -486,65 +486,57 @@ def init(ContextInfo):
         if hasattr(ContextInfo, method_name):
             _log_print('INFO', '[DIAG] has method: %s', method_name)
 
-    # Try get_market_data_ex with POSITIONAL args. QMT docs say:
-    # get_market_data_ex(fields, codes, period, dividend_type, count)
+    # Use xtdata module for diagnostic data pull
     for stock_code in _pool_codes:
         try:
-            raw = ContextInfo.get_market_data_ex(
-                ['close'], [stock_code], '1d', 'none', 60)
-            if raw is not None and 'close' in raw:
-                series = raw['close']
-                vals = list(series.values) if hasattr(series, 'values') else list(series)
-                _log_print('INFO', '[DIAG] %s count=60 => %d bars, first=%.2f last=%.2f',
-                           stock_code, len(vals), vals[0] if vals else 0, vals[-1] if vals else 0)
-            else:
-                _log_print('WARN', '[DIAG] %s get_market_data_ex returned empty', stock_code)
+            raw = xtdata.get_market_data(
+                field_list=['close'],
+                stock_list=[stock_code],
+                period='1d',
+                dividend_type='none',
+                count=60)
+            vals = list(raw.values) if raw and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else [])
+            _log_print('INFO', '[DIAG] %s xtdata.get_market_data => %d bars, last=%.2f',
+                       stock_code, len(vals) if vals else 0, vals[-1] if vals else 0)
         except Exception as e:
-            _log_print('WARN', '[DIAG] %s get_market_data_ex ERROR: %s', stock_code, str(e))
+            _log_print('WARN', '[DIAG] %s xtdata error: %s', stock_code, str(e))
 
     # === Download full history data for all stocks ===
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     for stock_code in _pool_codes:
-        try:
-            # Force download 120 days of daily data with retries (module-level xtdata IS available)
-            downloaded = False
-            for attempt in range(1, 4):
-                try:
-                    xtdata.download_history_data(stock_code, period='1d', start_time='20260101', end_time=today)
-                    downloaded = True
-                    break
-                except Exception:
-                    if attempt < 3:
-                        time.sleep(2)
-            if downloaded:
+        for attempt in range(1, 4):
+            try:
+                xtdata.download_history_data(stock_code, period='1d', start_time='20260101', end_time=today)
                 _log_print('INFO', '[INIT] %s history data downloaded', stock_code)
-            else:
-                _log_print('WARN', '[INIT] %s history download failed 3x, will try cached', stock_code)
-        except Exception as e:
-            _log_print('WARN', '[INIT] %s download exception: %s', stock_code, str(e))
+                break
+            except Exception:
+                if attempt < 3:
+                    time.sleep(2)
+        else:
+            _log_print('WARN', '[INIT] %s history download failed 3x, will try cached', stock_code)
 
-    # === VERIFY: pull 60 bars via get_market_data_ex and check if data is usable ===
+    # === VERIFY: pull 60 bars via xtdata ===
     for stock_code in _pool_codes:
         try:
-            raw = ContextInfo.get_market_data_ex(
-                ['close'], [stock_code], '1d', 'none', 60)
-            if raw is not None and 'close' in raw:
-                series = raw['close']
-                vals = list(series.values) if hasattr(series, 'values') else list(series)
-                actual_count = len(vals)
-                first_val = vals[0] if actual_count > 0 else 0
-                _log_print('INFO', '[VERIFY] %s count=60 => %d bars, first=%.2f last=%.2f',
-                           stock_code, actual_count, first_val, vals[-1] if actual_count > 0 else 0)
-                if actual_count < 60:
-                    _log_print('ERROR', '[VERIFY] %s only %d bars! In QMT, right-click this stock -> Download History Data -> 100 days. Then restart strategy.',
-                               stock_code, actual_count)
-                elif first_val < 50:
-                    _log_print('ERROR', '[VERIFY] %s first bar=%.2f (likely stale). In QMT, right-click this stock -> Download History Data -> 100 days. Then restart strategy.',
-                               stock_code, first_val)
-                else:
-                    _log_print('INFO', '[VERIFY] %s data looks OK.', stock_code)
+            raw = xtdata.get_market_data(
+                field_list=['close'],
+                stock_list=[stock_code],
+                period='1d',
+                dividend_type='none',
+                count=60)
+            vals = list(raw.values) if raw and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else None)
+            actual_count = len(vals) if vals else 0
+            first_val = vals[0] if actual_count > 0 else 0
+            _log_print('INFO', '[VERIFY] %s count=60 => %d bars, first=%.2f last=%.2f',
+                       stock_code, actual_count, first_val, vals[-1] if actual_count > 0 else 0)
+            if actual_count < 60:
+                _log_print('ERROR', '[VERIFY] %s only %d bars! Download history data for this stock in QMT.',
+                           stock_code, actual_count)
+            elif first_val < 50:
+                _log_print('ERROR', '[VERIFY] %s first bar=%.2f (stale data). Download history data for this stock in QMT.',
+                           stock_code, first_val)
             else:
-                _log_print('WARN', '[VERIFY] %s get_market_data_ex returned empty', stock_code)
+                _log_print('INFO', '[VERIFY] %s data looks OK.', stock_code)
         except Exception as e:
             _log_print('WARN', '[VERIFY] %s check error: %s', stock_code, str(e))
 
@@ -860,9 +852,10 @@ def _get_history_bars(stock_code, count=60):
         result = _HISTORY_CACHE[cache_key]
         return _build_history_return(result)
     try:
-        raw_data = ContextInfo.get_market_data_ex(
-            ['open', 'high', 'low', 'close', 'volume'],
-            [stock_code], '1d', 'none', count)
+        raw_data = xtdata.get_market_data(
+            field_list=['open', 'high', 'low', 'close', 'volume'],
+            stock_list=[stock_code], period='1d',
+            dividend_type='none', count=60)
         # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
         # Extract series directly
         result = {}
