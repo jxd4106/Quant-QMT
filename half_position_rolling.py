@@ -819,11 +819,6 @@ def _get_history_bars(stock_code, count=60):
     except Exception as e:
         _log_print('ERROR', '[ERROR] get_market_data %s: %s', stock_code, str(e))
         return None
-    if data is None or len(data.get('close', {}).get(stock_code, [])) == 0:
-        # QMT built-in Python -- xtdata.download_history_data() API may not exist.
-        # Just log and return None; the strategy will skip this stock gracefully.
-        _log_print('WARN', '[DATA] %s get_market_data returned empty (QMT may need manual data download)', stock_code)
-        return None
     if data is None:
         return None
     result = {}
