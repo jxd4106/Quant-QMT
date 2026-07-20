@@ -399,7 +399,7 @@ _HISTORY_CACHE = {}
 
 
 def _heartbeat(now_time):
-    """Print a heartbeat every 30 min so user knows the strategy is alive."""
+    """Print a heartbeat every 10 min so user knows the strategy is alive."""
     if g.last_heartbeat == '':
         g.last_heartbeat = '00:00'
     h, m = g.last_heartbeat.split(':')
@@ -413,6 +413,50 @@ def _heartbeat(now_time):
     if now_min - last_min >= 10:
         g.last_heartbeat = now_time
         _log_print('INFO', '[HEARTBEAT] strategy running at %s', now_time)
+        return True
+    return False
+
+
+def _diagnostic_scan(now_time):
+    """Every 10 min (with heartbeat) scan all stocks & log signal status — no trading."""
+    for stock_code in _pool_codes:
+        if not is_in_trading_hours(stock_code, now_time):
+            continue
+        bar = _get_latest_bar(stock_code)
+        if bar is None:
+            continue
+        current_price = bar['close']
+        hist = _get_history_bars(stock_code)
+        if hist is None or len(hist['close']) < 60:
+            continue
+
+        close_arr = np.append(hist['close'], bar['close'])
+        open_arr = np.append(hist['open'], bar['open'])
+        high_arr = np.append(hist['high'], bar['high'])
+        low_arr = np.append(hist['low'], bar['low'])
+        vol_arr = np.append(hist['volume'], bar['volume'])
+        ind = calc_indicators(open_arr, high_arr, low_arr, close_arr, vol_arr)
+        i = len(close_arr) - 1
+        s1, s2, s3, b1, b2, b3 = calc_signals(ind, i)
+
+        sig_names = []
+        if s1: sig_names.append('S1')
+        if s2: sig_names.append('S2')
+        if s3: sig_names.append('S3')
+        if b1: sig_names.append('B1')
+        if b2: sig_names.append('B2')
+        if b3: sig_names.append('B3')
+        sig_str = ','.join(sig_names) if sig_names else 'NONE'
+
+        cfg = STOCK_POOL.get(stock_code, {})
+        name = cfg.get('name', stock_code)
+        above_ma20 = 'ABOVE' if ind['close_ab_ma20'][i] else 'BELOW'
+        _log_print('INFO', '[SCAN] %s(%s) price=%.2f ma20=%.2f %s signals=%s last_sell=%d b2=%s',
+                   name, stock_code, current_price,
+                   ind['ma20'][i] if not np.isnan(ind['ma20'][i]) else 0,
+                   above_ma20, sig_str,
+                   g.last_sell_qty.get(stock_code, 0),
+                   'Y' if g.b2_used.get(stock_code) else 'N')
 
 
 def init(ContextInfo):
@@ -468,8 +512,10 @@ def handlebar(ContextInfo):
         g.daily_stop_count = 0
         _log_print('INFO', '[DAY] New day: %s', today)
 
-    # Heartbeat: print once every 30 minutes so user knows strategy is alive
-    _heartbeat(now_time)
+    # Heartbeat + diagnostic scan every 10 minutes
+    fired = _heartbeat(now_time)
+    if fired and now_time < '14:50':
+        _diagnostic_scan(now_time)
 
     sig_ran_today = False
     for stock_code in _pool_codes:
