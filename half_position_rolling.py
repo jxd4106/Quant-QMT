@@ -550,9 +550,16 @@ def handlebar(ContextInfo):
         g.daily_stop_count = 0
         _log_print('INFO', '[DAY] New day: %s', today)
 
-    # Heartbeat + diagnostic scan every 10 minutes (also at signal time)
+    # Heartbeat + diagnostic scan every 10 minutes
+    # ALSO log diagnostic at 14:55 signal time to capture the final trade decision
     fired = _heartbeat(now_time)
-    if fired:
+    sig_time = None
+    for stock_code in _pool_codes:
+        if is_in_trading_hours(stock_code, now_time):
+            sig_time = get_signal_time(now_time, stock_code)
+            if sig_time:
+                break
+    if fired or sig_time:
         _diagnostic_scan(now_time)
 
     sig_ran_today = False
