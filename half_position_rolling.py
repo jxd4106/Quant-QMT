@@ -838,10 +838,9 @@ def _get_history_bars(stock_code, count=60):
                 'volume': np.array(result['volume'])}
     try:
         # Use module-level xtdata.get_market_data (same module as download_history_data)
-        # ContextInfo.get_market_data may use a different cache
         data = xtdata.get_market_data(
-            ['open', 'high', 'low', 'close', 'volume'],
-            stock_code=[stock_code], period='1d', dividend_type='none', count=count)
+            field_list=['open', 'high', 'low', 'close', 'volume'],
+            stock_list=[stock_code], period='1d', dividend_type='none', count=count)
     except Exception as e:
         _log_print('ERROR', '[ERROR] get_market_data %s: %s', stock_code, str(e))
         return None
