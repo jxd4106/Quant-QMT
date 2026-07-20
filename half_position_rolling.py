@@ -837,10 +837,13 @@ def _get_history_bars(stock_code, count=60):
                 'low': np.array(result['low']), 'close': np.array(result['close']),
                 'volume': np.array(result['volume'])}
     try:
-        # Use ContextInfo.get_market_data with keyword args (same as DIAG which works)
-        data = _ctx.get_market_data(
-            field_list=['open', 'high', 'low', 'close', 'volume'],
-            stock_list=[stock_code], period='1d', count=count)
+        # ContextInfo.get_market_data positional signature:
+        # get_market_data(fields, stock_code=[...], period, count)
+        # The DIAG code in init() uses ContextInfo.get_market_data(...) directly
+        # and it works with count=5. Let's match that exact call pattern.
+        data = ContextInfo.get_market_data(
+            ['open', 'high', 'low', 'close', 'volume'],
+            stock_code=[stock_code], period='1d', count=count)
     except Exception as e:
         _log_print('ERROR', '[ERROR] get_market_data %s: %s', stock_code, str(e))
         return None
