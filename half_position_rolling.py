@@ -550,9 +550,9 @@ def handlebar(ContextInfo):
         g.daily_stop_count = 0
         _log_print('INFO', '[DAY] New day: %s', today)
 
-    # Heartbeat + diagnostic scan every 10 minutes
+    # Heartbeat + diagnostic scan every 10 minutes (also at signal time)
     fired = _heartbeat(now_time)
-    if fired and now_time < '14:50':
+    if fired:
         _diagnostic_scan(now_time)
 
     sig_ran_today = False
