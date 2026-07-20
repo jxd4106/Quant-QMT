@@ -506,13 +506,29 @@ def init(ContextInfo):
             except Exception as e:
                 _log_print('WARN', '[DIAG] %s dividend_type=%s: ERROR %s', stock_code, dt, str(e))
 
-    state = ensure_state()
+    # === Download full history data for all stocks ===
     today = datetime.datetime.now().strftime('%Y-%m-%d')
-    reset_daily_state(state, today)
+    for stock_code in _pool_codes:
+        try:
+            # Force download 120 days of daily data with retries (module-level xtdata IS available)
+            downloaded = False
+            for attempt in range(1, 4):
+                try:
+                    xtdata.download_history_data(stock_code, period='1d', start_time='20260101', end_time=today)
+                    downloaded = True
+                    break
+                except Exception:
+                    if attempt < 3:
+                        time.sleep(2)
+            if downloaded:
+                _log_print('INFO', '[INIT] %s history data downloaded', stock_code)
+            else:
+                _log_print('WARN', '[INIT] %s history download failed 3x, will try cached', stock_code)
+        except Exception as e:
+            _log_print('WARN', '[INIT] %s download exception: %s', stock_code, str(e))
 
-    reset_codes = process_override()
-    if reset_codes:
-        _log_print('INFO', '[OVERRIDE] stop-loss reset: %s', ','.join(reset_codes))
+    state = ensure_state()
+    reset_daily_state(state, today)
 
     _sync_g_from_state(state, today)
     _log_print('INFO', '[INIT] Ready.\n')
