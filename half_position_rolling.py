@@ -491,7 +491,7 @@ def init(ContextInfo):
         for dt in ['none', 'front', 'back']:
             try:
                 raw = ContextInfo.get_market_data(
-                    ['close'], [stock_code], '1d', '5')
+                    ['close'], [stock_code], '1d', 5)
                 if raw is not None:
                     close_val = raw.get('close', {})
                     if isinstance(close_val, dict):
@@ -532,7 +532,7 @@ def init(ContextInfo):
     for stock_code in _pool_codes:
         try:
             raw = ContextInfo.get_market_data(
-                ['close'], [stock_code], '1d', '60')
+                ['close'], [stock_code], '1d', 60)
             if raw is not None:
                 series = raw.get('close')
                 if series is not None:
@@ -873,7 +873,7 @@ def _get_history_bars(stock_code, count=60):
         # Use positional matching DIAG's pattern that actually succeeded.
         raw_data = ContextInfo.get_market_data(
             ['open', 'high', 'low', 'close', 'volume'],
-            [stock_code], '1d', str(count))
+            [stock_code], '1d', count)
         # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
         # Extract series directly -- no nested dict layer for single stock.
         result = {}
