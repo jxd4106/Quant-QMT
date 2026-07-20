@@ -529,6 +529,34 @@ def init(ContextInfo):
         except Exception as e:
             _log_print('WARN', '[INIT] %s download exception: %s', stock_code, str(e))
 
+    # === VERIFY: pull 60 bars and check if data is usable ===
+    for stock_code in _pool_codes:
+        try:
+            raw = ContextInfo.get_market_data(
+                ['close'], stock_code=[stock_code], period='1d', count=60)
+            if raw is not None:
+                series = raw.get('close')
+                if series is not None:
+                    vals = list(series.values) if hasattr(series, 'values') else list(series)
+                    actual_count = len(vals)
+                    first_val = vals[0] if actual_count > 0 else 0
+                    _log_print('INFO', '[VERIFY] %s count=60 => %d bars, first=%.2f last=%.2f',
+                               stock_code, actual_count, first_val, vals[-1] if actual_count > 0 else 0)
+                    if actual_count < 60:
+                        _log_print('ERROR', '[VERIFY] %s only %d bars! In QMT, right-click this stock -> Download History Data -> 100 days. Then restart strategy.',
+                                   stock_code, actual_count)
+                    elif first_val < 50:
+                        _log_print('ERROR', '[VERIFY] %s first bar=%.2f (likely stale). In QMT, right-click this stock -> Download History Data -> 100 days. Then restart strategy.',
+                                   stock_code, first_val)
+                    else:
+                        _log_print('INFO', '[VERIFY] %s data looks OK.', stock_code)
+                else:
+                    _log_print('WARN', '[VERIFY] %s close field missing', stock_code)
+            else:
+                _log_print('WARN', '[VERIFY] %s 60-bar query returned None', stock_code)
+        except Exception as e:
+            _log_print('WARN', '[VERIFY] %s check error: %s', stock_code, str(e))
+
     state = ensure_state()
     reset_daily_state(state, today)
 
