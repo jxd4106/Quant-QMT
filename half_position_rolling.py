@@ -837,8 +837,9 @@ def _get_history_bars(stock_code, count=60):
                 'low': np.array(result['low']), 'close': np.array(result['close']),
                 'volume': np.array(result['volume'])}
     try:
-        # Use standard QMT context API with explicit count and no dividend adjustment
-        data = _ctx.get_market_data(
+        # Use module-level xtdata.get_market_data (same module as download_history_data)
+        # ContextInfo.get_market_data may use a different cache
+        data = xtdata.get_market_data(
             ['open', 'high', 'low', 'close', 'volume'],
             stock_code=[stock_code], period='1d', dividend_type='none', count=count)
     except Exception as e:
@@ -853,10 +854,11 @@ def _get_history_bars(stock_code, count=60):
             if series is None:
                 _log_print('WARN', '[DATA] %s field=%s missing', stock_code, field)
                 return None
-            # get_market_data returns a pandas Series, not a nested dict
+            # get_market_data returns a pandas Series
             vals = list(series.values) if hasattr(series, 'values') else list(series)
             if len(vals) < count:
-                _log_print('WARN', '[DATA] %s field=%s only %d bars (need %d)', stock_code, field, len(vals), count)
+                _log_print('WARN', '[DATA] %s field=%s only %d bars (need %d) first=%s last=%s',
+                           stock_code, field, len(vals), count, vals[0], vals[-1])
                 return None
             result[field] = vals
         except Exception as e:
