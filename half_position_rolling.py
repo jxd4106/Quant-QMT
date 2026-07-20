@@ -491,7 +491,7 @@ def init(ContextInfo):
         for dt in ['none', 'front', 'back']:
             try:
                 raw = ContextInfo.get_market_data(
-                    ['close'], stock_code=[stock_code],
+                    field_list=['close'], stock_list=[stock_code],
                     period='1d', dividend_type=dt, count=5)
                 if raw is not None:
                     close_val = raw.get('close', {})
