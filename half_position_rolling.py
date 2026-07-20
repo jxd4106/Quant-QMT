@@ -486,16 +486,16 @@ def init(ContextInfo):
         if hasattr(ContextInfo, method_name):
             _log_print('INFO', '[DIAG] has method: %s', method_name)
 
-    # Try get_market_data_ex with keyword args (recommended over get_market_data)
+    # Try get_market_data_ex with POSITIONAL args. QMT docs say:
+    # get_market_data_ex(fields, codes, period, dividend_type, count)
     for stock_code in _pool_codes:
         try:
             raw = ContextInfo.get_market_data_ex(
-                field_list=['close'], stock_list=[stock_code],
-                period='1d', dividend_type='none', count=60)
+                ['close'], [stock_code], '1d', 'none', 60)
             if raw is not None and 'close' in raw:
                 series = raw['close']
                 vals = list(series.values) if hasattr(series, 'values') else list(series)
-                _log_print('INFO', '[DIAG] %s count=60 => %d bars, first=%.2f last=%.2f (via get_market_data_ex)',
+                _log_print('INFO', '[DIAG] %s count=60 => %d bars, first=%.2f last=%.2f',
                            stock_code, len(vals), vals[0] if vals else 0, vals[-1] if vals else 0)
             else:
                 _log_print('WARN', '[DIAG] %s get_market_data_ex returned empty', stock_code)
@@ -527,8 +527,7 @@ def init(ContextInfo):
     for stock_code in _pool_codes:
         try:
             raw = ContextInfo.get_market_data_ex(
-                field_list=['close'], stock_list=[stock_code],
-                period='1d', dividend_type='none', count=60)
+                ['close'], [stock_code], '1d', 'none', 60)
             if raw is not None and 'close' in raw:
                 series = raw['close']
                 vals = list(series.values) if hasattr(series, 'values') else list(series)
@@ -862,9 +861,8 @@ def _get_history_bars(stock_code, count=60):
         return _build_history_return(result)
     try:
         raw_data = ContextInfo.get_market_data_ex(
-            field_list=['open', 'high', 'low', 'close', 'volume'],
-            stock_list=[stock_code], period='1d',
-            dividend_type='none', count=count)
+            ['open', 'high', 'low', 'close', 'volume'],
+            [stock_code], '1d', 'none', count)
         # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
         # Extract series directly
         result = {}
