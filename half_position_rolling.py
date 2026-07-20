@@ -486,26 +486,21 @@ def init(ContextInfo):
         if hasattr(ContextInfo, method_name):
             _log_print('INFO', '[DIAG] has method: %s', method_name)
 
-    # Try raw call on get_market_data to see the actual return format
+    # Try get_market_data_ex with keyword args (recommended over get_market_data)
     for stock_code in _pool_codes:
-        for dt in ['none', 'front', 'back']:
-            try:
-                raw = ContextInfo.get_market_data(
-                    ['close'], [stock_code], '1d', 5)
-                if raw is not None:
-                    close_val = raw.get('close', {})
-                    if isinstance(close_val, dict):
-                        arr = close_val.get(stock_code, [])
-                        _log_print('INFO', '[DIAG] %s dividend_type=%s: len=%d values=%s',
-                                   stock_code, dt, len(arr) if arr else 0,
-                                   [round(x, 2) for x in arr[-3:]] if arr and len(arr) >= 3 else arr)
-                    else:
-                        _log_print('INFO', '[DIAG] %s dividend_type=%s: close=%s (type=%s)',
-                                   stock_code, dt, repr(close_val)[:120], type(close_val).__name__)
-                else:
-                    _log_print('WARN', '[DIAG] %s dividend_type=%s: returned None', stock_code, dt)
-            except Exception as e:
-                _log_print('WARN', '[DIAG] %s dividend_type=%s: ERROR %s', stock_code, dt, str(e))
+        try:
+            raw = ContextInfo.get_market_data_ex(
+                field_list=['close'], stock_list=[stock_code],
+                period='1d', dividend_type='none', count=60)
+            if raw is not None and 'close' in raw:
+                series = raw['close']
+                vals = list(series.values) if hasattr(series, 'values') else list(series)
+                _log_print('INFO', '[DIAG] %s count=60 => %d bars, first=%.2f last=%.2f (via get_market_data_ex)',
+                           stock_code, len(vals), vals[0] if vals else 0, vals[-1] if vals else 0)
+            else:
+                _log_print('WARN', '[DIAG] %s get_market_data_ex returned empty', stock_code)
+        except Exception as e:
+            _log_print('WARN', '[DIAG] %s get_market_data_ex ERROR: %s', stock_code, str(e))
 
     # === Download full history data for all stocks ===
     today = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -528,31 +523,29 @@ def init(ContextInfo):
         except Exception as e:
             _log_print('WARN', '[INIT] %s download exception: %s', stock_code, str(e))
 
-    # === VERIFY: pull 60 bars and check if data is usable ===
+    # === VERIFY: pull 60 bars via get_market_data_ex and check if data is usable ===
     for stock_code in _pool_codes:
         try:
-            raw = ContextInfo.get_market_data(
-                ['close'], [stock_code], '1d', 60)
-            if raw is not None:
-                series = raw.get('close')
-                if series is not None:
-                    vals = list(series.values) if hasattr(series, 'values') else list(series)
-                    actual_count = len(vals)
-                    first_val = vals[0] if actual_count > 0 else 0
-                    _log_print('INFO', '[VERIFY] %s count=60 => %d bars, first=%.2f last=%.2f',
-                               stock_code, actual_count, first_val, vals[-1] if actual_count > 0 else 0)
-                    if actual_count < 60:
-                        _log_print('ERROR', '[VERIFY] %s only %d bars! In QMT, right-click this stock -> Download History Data -> 100 days. Then restart strategy.',
-                                   stock_code, actual_count)
-                    elif first_val < 50:
-                        _log_print('ERROR', '[VERIFY] %s first bar=%.2f (likely stale). In QMT, right-click this stock -> Download History Data -> 100 days. Then restart strategy.',
-                                   stock_code, first_val)
-                    else:
-                        _log_print('INFO', '[VERIFY] %s data looks OK.', stock_code)
+            raw = ContextInfo.get_market_data_ex(
+                field_list=['close'], stock_list=[stock_code],
+                period='1d', dividend_type='none', count=60)
+            if raw is not None and 'close' in raw:
+                series = raw['close']
+                vals = list(series.values) if hasattr(series, 'values') else list(series)
+                actual_count = len(vals)
+                first_val = vals[0] if actual_count > 0 else 0
+                _log_print('INFO', '[VERIFY] %s count=60 => %d bars, first=%.2f last=%.2f',
+                           stock_code, actual_count, first_val, vals[-1] if actual_count > 0 else 0)
+                if actual_count < 60:
+                    _log_print('ERROR', '[VERIFY] %s only %d bars! In QMT, right-click this stock -> Download History Data -> 100 days. Then restart strategy.',
+                               stock_code, actual_count)
+                elif first_val < 50:
+                    _log_print('ERROR', '[VERIFY] %s first bar=%.2f (likely stale). In QMT, right-click this stock -> Download History Data -> 100 days. Then restart strategy.',
+                               stock_code, first_val)
                 else:
-                    _log_print('WARN', '[VERIFY] %s close field missing', stock_code)
+                    _log_print('INFO', '[VERIFY] %s data looks OK.', stock_code)
             else:
-                _log_print('WARN', '[VERIFY] %s 60-bar query returned None', stock_code)
+                _log_print('WARN', '[VERIFY] %s get_market_data_ex returned empty', stock_code)
         except Exception as e:
             _log_print('WARN', '[VERIFY] %s check error: %s', stock_code, str(e))
 
@@ -868,14 +861,12 @@ def _get_history_bars(stock_code, count=60):
         result = _HISTORY_CACHE[cache_key]
         return _build_history_return(result)
     try:
-        # In QMT, ContextInfo.get_market_data positional args work but
-        # keyword args (field_list/stock_list) throw unexpected-keyword.
-        # Use positional matching DIAG's pattern that actually succeeded.
-        raw_data = ContextInfo.get_market_data(
-            ['open', 'high', 'low', 'close', 'volume'],
-            [stock_code], '1d', count)
+        raw_data = ContextInfo.get_market_data_ex(
+            field_list=['open', 'high', 'low', 'close', 'volume'],
+            stock_list=[stock_code], period='1d',
+            dividend_type='none', count=count)
         # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
-        # Extract series directly -- no nested dict layer for single stock.
+        # Extract series directly
         result = {}
         for field in ('open', 'high', 'low', 'close', 'volume'):
             series = raw_data.get(field)
