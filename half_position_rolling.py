@@ -474,8 +474,37 @@ def init(ContextInfo):
               len(STOCK_POOL), TARGET_PCT * 100, STOP_LOSS_PCT * 100)
     _log_print('INFO', '=' * 60)
 
-    for stock_code, cfg in STOCK_POOL.items():
-        _log_print('INFO', '[INIT] %s configured (no manual download needed in QMT)', cfg['name'])
+    # === DIAGNOSTIC: dump ContextInfo API surface to find the right data method ===
+    _log_print('INFO', '[DIAG] ContextInfo type: %s', type(ContextInfo).__name__)
+    ctx_methods = sorted([attr for attr in dir(ContextInfo) if not attr.startswith('__')])
+    _log_print('INFO', '[DIAG] ContextInfo attrs: %s', ','.join(ctx_methods))
+    # Try every plausible data method and log what they return
+    for method_name in ['get_market_data', 'get_market_data_ex', 'get_history_data',
+                         'get_local_data', 'download_history_data']:
+        if hasattr(ContextInfo, method_name):
+            _log_print('INFO', '[DIAG] has method: %s', method_name)
+
+    # Try raw call on get_market_data to see the actual return format
+    for stock_code in _pool_codes:
+        for dt in ['none', 'front', 'back']:
+            try:
+                raw = ContextInfo.get_market_data(
+                    ['close'], stock_code=[stock_code],
+                    period='1d', dividend_type=dt, count=5)
+                if raw is not None:
+                    close_val = raw.get('close', {})
+                    if isinstance(close_val, dict):
+                        arr = close_val.get(stock_code, [])
+                        _log_print('INFO', '[DIAG] %s dividend_type=%s: len=%d values=%s',
+                                   stock_code, dt, len(arr) if arr else 0,
+                                   [round(x, 2) for x in arr[-3:]] if arr and len(arr) >= 3 else arr)
+                    else:
+                        _log_print('INFO', '[DIAG] %s dividend_type=%s: close=%s (type=%s)',
+                                   stock_code, dt, repr(close_val)[:120], type(close_val).__name__)
+                else:
+                    _log_print('WARN', '[DIAG] %s dividend_type=%s: returned None', stock_code, dt)
+            except Exception as e:
+                _log_print('WARN', '[DIAG] %s dividend_type=%s: ERROR %s', stock_code, dt, str(e))
 
     state = ensure_state()
     today = datetime.datetime.now().strftime('%Y-%m-%d')
