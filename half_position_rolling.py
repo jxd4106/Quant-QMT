@@ -477,7 +477,7 @@ def init(ContextInfo):
     for stock_code, cfg in STOCK_POOL.items():
         for attempt in range(1, 4):
             try:
-                xtdata.download_history_data(stock_code, period='1d')
+                _ctx.download_history_data(stock_code, period='1d', count=-1)
                 _log_print('INFO', '[INIT] %s data ready', cfg['name'])
                 break
             except Exception as e:
@@ -793,12 +793,24 @@ def _get_history_bars(stock_code, count=60):
                 'low': np.array(result['low']), 'close': np.array(result['close']),
                 'volume': np.array(result['volume'])}
     try:
+        # Use standard QMT context API with explicit count and no dividend adjustment
         data = _ctx.get_market_data(
             ['open', 'high', 'low', 'close', 'volume'],
             stock_code=[stock_code], period='1d', dividend_type='none', count=count)
     except Exception as e:
         _log_print('ERROR', '[ERROR] get_market_data %s: %s', stock_code, str(e))
         return None
+    if data is None or len(data.get('close', {}).get(stock_code, [])) == 0:
+        # Fallback: try xtdata.download_history_data first, then retry get_market_data
+        _log_print('WARN', '[DATA] %s get_market_data returned empty, trying xtdata download...', stock_code)
+        try:
+            xtdata.download_history_data(stock_code, period='1d', count=-1)
+            data = _ctx.get_market_data(
+                ['open', 'high', 'low', 'close', 'volume'],
+                stock_code=[stock_code], period='1d', dividend_type='none', count=count)
+        except Exception as e2:
+            _log_print('ERROR', '[ERROR] %s download retry failed: %s', stock_code, str(e2))
+            return None
     if data is None:
         return None
     result = {}
@@ -813,6 +825,10 @@ def _get_history_bars(stock_code, count=60):
         except Exception:
             return None
     _HISTORY_CACHE[cache_key] = result
+    # Log first/last few data points for sanity check
+    closes = result['close']
+    _log_print('INFO', '[DATA] %s loaded %d bars, close range: %.2f ~ %.2f',
+               stock_code, len(closes), closes[0], closes[-1])
     return {'open': np.array(result['open']), 'high': np.array(result['high']),
             'low': np.array(result['low']), 'close': np.array(result['close']),
             'volume': np.array(result['volume'])}
