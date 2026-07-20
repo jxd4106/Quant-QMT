@@ -451,12 +451,15 @@ def _diagnostic_scan(now_time):
         cfg = STOCK_POOL.get(stock_code, {})
         name = cfg.get('name', stock_code)
         above_ma20 = 'ABOVE' if ind['close_ab_ma20'][i] else 'BELOW'
-        _log_print('INFO', '[SCAN] %s(%s) price=%.2f ma20=%.2f %s signals=%s last_sell=%d b2=%s',
+        # Show last 5 history closes + current bar to debug MA20
+        hist_tail = [round(x, 2) for x in close_arr[max(0, i-4):i].tolist()]
+        _log_print('INFO', '[SCAN] %s(%s) price=%.2f ma20=%.2f %s signals=%s last_sell=%d b2=%s hist_tail=%s',
                    name, stock_code, current_price,
                    ind['ma20'][i] if not np.isnan(ind['ma20'][i]) else 0,
                    above_ma20, sig_str,
                    g.last_sell_qty.get(stock_code, 0),
-                   'Y' if g.b2_used.get(stock_code) else 'N')
+                   'Y' if g.b2_used.get(stock_code) else 'N',
+                   hist_tail)
 
 
 def init(ContextInfo):
