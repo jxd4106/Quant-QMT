@@ -423,10 +423,13 @@ def _diagnostic_scan(now_time):
     for stock_code in _pool_codes:
         bar = _get_latest_bar(stock_code)
         if bar is None:
+            _log_print('WARN', '[SCAN] %s skip: no bar data', stock_code)
             continue
         current_price = bar['close']
         hist = _get_history_bars(stock_code)
         if hist is None or len(hist['close']) < 60:
+            _log_print('WARN', '[SCAN] %s skip: history=%s', stock_code,
+                       'None' if hist is None else '%d bars' % len(hist['close']))
             continue
 
         close_arr = np.append(hist['close'], bar['close'])
