@@ -475,17 +475,7 @@ def init(ContextInfo):
     _log_print('INFO', '=' * 60)
 
     for stock_code, cfg in STOCK_POOL.items():
-        for attempt in range(1, 4):
-            try:
-                _ctx.download_history_data(stock_code, period='1d', count=-1)
-                _log_print('INFO', '[INIT] %s data ready', cfg['name'])
-                break
-            except Exception as e:
-                _log_print('WARN', '[INIT] %s attempt %d/3 failed: %s', stock_code, attempt, str(e))
-                if attempt < 3:
-                    time.sleep(2)
-        else:
-            _log_print('ERROR', '[INIT] %s download failed 3x, skipped', cfg['name'])
+        _log_print('INFO', '[INIT] %s configured (no manual download needed in QMT)', cfg['name'])
 
     state = ensure_state()
     today = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -801,16 +791,10 @@ def _get_history_bars(stock_code, count=60):
         _log_print('ERROR', '[ERROR] get_market_data %s: %s', stock_code, str(e))
         return None
     if data is None or len(data.get('close', {}).get(stock_code, [])) == 0:
-        # Fallback: try xtdata.download_history_data first, then retry get_market_data
-        _log_print('WARN', '[DATA] %s get_market_data returned empty, trying xtdata download...', stock_code)
-        try:
-            xtdata.download_history_data(stock_code, period='1d', count=-1)
-            data = _ctx.get_market_data(
-                ['open', 'high', 'low', 'close', 'volume'],
-                stock_code=[stock_code], period='1d', dividend_type='none', count=count)
-        except Exception as e2:
-            _log_print('ERROR', '[ERROR] %s download retry failed: %s', stock_code, str(e2))
-            return None
+        # QMT built-in Python -- xtdata.download_history_data() API may not exist.
+        # Just log and return None; the strategy will skip this stock gracefully.
+        _log_print('WARN', '[DATA] %s get_market_data returned empty (QMT may need manual data download)', stock_code)
+        return None
     if data is None:
         return None
     result = {}
