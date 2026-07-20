@@ -828,52 +828,40 @@ def _process_signal(stock_code, bar, today):
                        stock_code, raw_qty, max_cash_qty, available_cash, current_price)
 
 
+def _build_history_return(result):
+    return {'open': np.array(result['open']), 'high': np.array(result['high']),
+            'low': np.array(result['low']), 'close': np.array(result['close']),
+            'volume': np.array(result['volume'])}
+
+
 def _get_history_bars(stock_code, count=60):
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     cache_key = '%s:%s' % (stock_code, today)
     if cache_key in _HISTORY_CACHE:
         result = _HISTORY_CACHE[cache_key]
-        return {'open': np.array(result['open']), 'high': np.array(result['high']),
-                'low': np.array(result['low']), 'close': np.array(result['close']),
-                'volume': np.array(result['volume'])}
+        return _build_history_return(result)
     try:
-        # ContextInfo.get_market_data positional signature:
-        # get_market_data(fields, stock_code=[...], period, count)
-        # The DIAG code in init() uses ContextInfo.get_market_data(...) directly
-        # and it works with count=5. Let's match that exact call pattern.
-        data = ContextInfo.get_market_data(
+        # In QMT, ContextInfo.get_market_data positional args work but
+        # keyword args (field_list/stock_list) throw unexpected-keyword.
+        # Use positional matching DIAG's pattern that actually succeeded.
+        raw_data = ContextInfo.get_market_data(
             ['open', 'high', 'low', 'close', 'volume'],
             stock_code=[stock_code], period='1d', count=count)
+        # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
+        # Extract series directly -- no nested dict layer for single stock.
+        result = {}
+        for field in ('open', 'high', 'low', 'close', 'volume'):
+            series = raw_data.get(field)
+            arr = list(series.values) if hasattr(series, 'values') else list(series)
+            result[field] = arr
+        closes = result['close']
+        _log_print('INFO', '[DATA] %s loaded %d bars, close range: %.2f ~ %.2f',
+                   stock_code, len(closes), closes[0], closes[-1])
+        _HISTORY_CACHE[cache_key] = result
+        return _build_history_return(result)
     except Exception as e:
         _log_print('ERROR', '[ERROR] get_market_data %s: %s', stock_code, str(e))
         return None
-    if data is None:
-        return None
-    result = {}
-    for field in ('open', 'high', 'low', 'close', 'volume'):
-        try:
-            series = data.get(field)
-            if series is None:
-                _log_print('WARN', '[DATA] %s field=%s missing', stock_code, field)
-                return None
-            # get_market_data returns a pandas Series
-            vals = list(series.values) if hasattr(series, 'values') else list(series)
-            if len(vals) < count:
-                _log_print('WARN', '[DATA] %s field=%s only %d bars (need %d) first=%s last=%s',
-                           stock_code, field, len(vals), count, vals[0], vals[-1])
-                return None
-            result[field] = vals
-        except Exception as e:
-            _log_print('ERROR', '[DATA] %s field=%s parse error: %s', stock_code, field, str(e))
-            return None
-    _HISTORY_CACHE[cache_key] = result
-    # Log first/last few data points for sanity check
-    closes = result['close']
-    _log_print('INFO', '[DATA] %s loaded %d bars, close range: %.2f ~ %.2f',
-               stock_code, len(closes), closes[0], closes[-1])
-    return {'open': np.array(result['open']), 'high': np.array(result['high']),
-            'low': np.array(result['low']), 'close': np.array(result['close']),
-            'volume': np.array(result['volume'])}
 
 
 def _do_order(stock_code, op_type, qty, limit_price):
