@@ -829,13 +829,18 @@ def _get_history_bars(stock_code, count=60):
     result = {}
     for field in ('open', 'high', 'low', 'close', 'volume'):
         try:
-            val = data.get(field)
-            if isinstance(val, dict):
-                val = val.get(stock_code)
-            if val is None or len(val) == 0:
+            series = data.get(field)
+            if series is None:
+                _log_print('WARN', '[DATA] %s field=%s missing', stock_code, field)
                 return None
-            result[field] = list(val)
-        except Exception:
+            # get_market_data returns a pandas Series, not a nested dict
+            vals = list(series.values) if hasattr(series, 'values') else list(series)
+            if len(vals) < count:
+                _log_print('WARN', '[DATA] %s field=%s only %d bars (need %d)', stock_code, field, len(vals), count)
+                return None
+            result[field] = vals
+        except Exception as e:
+            _log_print('ERROR', '[DATA] %s field=%s parse error: %s', stock_code, field, str(e))
             return None
     _HISTORY_CACHE[cache_key] = result
     # Log first/last few data points for sanity check
