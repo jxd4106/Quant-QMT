@@ -418,10 +418,9 @@ def _heartbeat(now_time):
 
 
 def _diagnostic_scan(now_time):
-    """Every 10 min (with heartbeat) scan all stocks & log signal status -- no trading."""
+    """Every 10 min (with heartbeat) scan all stocks & log signal status -- no trading.
+    Does NOT filter by trading hours so it works even after market close."""
     for stock_code in _pool_codes:
-        if not is_in_trading_hours(stock_code, now_time):
-            continue
         bar = _get_latest_bar(stock_code)
         if bar is None:
             continue
