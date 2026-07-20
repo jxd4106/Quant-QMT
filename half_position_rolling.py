@@ -795,7 +795,7 @@ def _get_history_bars(stock_code, count=60):
     try:
         data = _ctx.get_market_data(
             ['open', 'high', 'low', 'close', 'volume'],
-            stock_code=[stock_code], period='1d', dividend_type='front', count=count)
+            stock_code=[stock_code], period='1d', dividend_type='none', count=count)
     except Exception as e:
         _log_print('ERROR', '[ERROR] get_market_data %s: %s', stock_code, str(e))
         return None
