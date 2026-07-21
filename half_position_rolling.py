@@ -525,12 +525,12 @@ def init(ContextInfo):
         return _vals_from_raw(raw, stock)
 
     def _try_ctx_history_data(stock):
-        """get_history_data — C++: (count, period, stock_code, dividend_type)"""
+        """get_history_data -- C++: (count, period, stock_code, dividend_type)"""
         raw = ContextInfo.get_history_data(60, '1d', stock, 'none')
         return _vals_from_raw(raw, stock)
 
     def _try_ctx_local_data(stock):
-        """get_local_data — QMT 推荐用 get_market_data_ex(subscribe=False) 替代，此处仅为探测"""
+        """get_local_data -- use get_market_data_ex(subscribe=False) instead, this is only a probe"""
         raw = ContextInfo.get_local_data(stock, '1d', 'none', 60)
         return _vals_from_raw(raw, stock)
 
@@ -584,7 +584,7 @@ def init(ContextInfo):
         _log_print('ERROR', '[PROBE] Check QMT data connection for: %s', ','.join(_pool_codes))
         _BEST_API = 'ctx_positional'  # fallback, will likely fail at runtime
 
-    # === VERIFY: pull bars with the best API (no count arg — C++ API doesn't support it)
+    # === VERIFY: pull bars with the best API (no count arg -- C++ API doesn't support it)
     for stock_code in _pool_codes:
         try:
             if _BEST_API == 'ctx_positional':
