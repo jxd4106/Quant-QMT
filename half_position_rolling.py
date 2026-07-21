@@ -486,20 +486,16 @@ def init(ContextInfo):
         if hasattr(ContextInfo, method_name):
             _log_print('INFO', '[DIAG] has method: %s', method_name)
 
-    # Use xtdata module for diagnostic data pull
+    # Use _ctx.get_market_data for diagnostic data pull
     for stock_code in _pool_codes:
         try:
-            raw = xtdata.get_market_data(
-                field_list=['close'],
-                stock_list=[stock_code],
-                period='1d',
-                dividend_type='none',
-                count=60)
+            raw = _ctx.get_market_data(
+                ['close'], [stock_code], '1d', 'none', 60)
             vals = list(raw.values) if raw and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else [])
-            _log_print('INFO', '[DIAG] %s xtdata.get_market_data => %d bars, last=%.2f',
+            _log_print('INFO', '[DIAG] %s get_market_data => %d bars, last=%.2f',
                        stock_code, len(vals) if vals else 0, vals[-1] if vals else 0)
         except Exception as e:
-            _log_print('WARN', '[DIAG] %s xtdata error: %s', stock_code, str(e))
+            _log_print('WARN', '[DIAG] %s error: %s', stock_code, str(e))
 
     # === Download full history data for all stocks ===
     today = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -515,15 +511,11 @@ def init(ContextInfo):
         else:
             _log_print('WARN', '[INIT] %s history download failed 3x, will try cached', stock_code)
 
-    # === VERIFY: pull 60 bars via xtdata ===
+    # === VERIFY: pull 60 bars via _ctx.get_market_data ===
     for stock_code in _pool_codes:
         try:
-            raw = xtdata.get_market_data(
-                field_list=['close'],
-                stock_list=[stock_code],
-                period='1d',
-                dividend_type='none',
-                count=60)
+            raw = _ctx.get_market_data(
+                ['close'], [stock_code], '1d', 'none', 60)
             vals = list(raw.values) if raw and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else None)
             actual_count = len(vals) if vals else 0
             first_val = vals[0] if actual_count > 0 else 0
@@ -852,10 +844,9 @@ def _get_history_bars(stock_code, count=60):
         result = _HISTORY_CACHE[cache_key]
         return _build_history_return(result)
     try:
-        raw_data = xtdata.get_market_data(
-            field_list=['open', 'high', 'low', 'close', 'volume'],
-            stock_list=[stock_code], period='1d',
-            dividend_type='none', count=60)
+        raw_data = _ctx.get_market_data(
+            ['open', 'high', 'low', 'close', 'volume'],
+            [stock_code], '1d', 'none', 60)
         # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
         # Extract series directly
         result = {}
