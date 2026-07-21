@@ -493,13 +493,25 @@ def init(ContextInfo):
     _BEST_API = 'none'
 
     # === Download history data for all stocks (one-time per stock, cached after) ===
+    download_success = False
     for stock_code in _pool_codes:
         try:
             _log_print('INFO', '[DOWNLOAD] downloading %s daily bars...', stock_code)
             xtdata.download_history_data(stock_code, '1d', '20200101', '')
-            _log_print('INFO', '[DOWNLOAD] %s download finished (may be cached).', stock_code)
+            download_success = True
+            _log_print('INFO', '[DOWNLOAD] %s download finished.', stock_code)
         except Exception as e:
             _log_print('WARN', '[DOWNLOAD] %s download failed: %s', stock_code, str(e))
+    # Also try xtdata.download_history_data2 with no end date
+    if not download_success:
+        for stock_code in _pool_codes:
+            try:
+                _log_print('INFO', '[DOWNLOAD2] downloading %s (alt method)...', stock_code)
+                xtdata.download_history_data2(stock_code, '1d', '20200101', '')
+                download_success = True
+                _log_print('INFO', '[DOWNLOAD2] %s download finished.', stock_code)
+            except Exception as e:
+                _log_print('WARN', '[DOWNLOAD2] %s download failed: %s', stock_code, str(e))
 
     def _try_ctx_positional(stock):
         """ContextInfo.get_market_data with positional args."""
@@ -507,18 +519,19 @@ def init(ContextInfo):
         return _vals_from_raw(raw, stock)
 
     def _try_ctx_market_data_ex(stock):
-        """ContextInfo.get_market_data_ex with positional args."""
-        raw = ContextInfo.get_market_data_ex(['close'], [stock], '1d', 'none', 60)
+        """get_market_data_ex — C++: (fields, stocks, period, div_type, count, start_time, end_time, subscribe, fill)"""
+        raw = ContextInfo.get_market_data_ex(
+            ['close'], [stock], '1d', 'none', 60, '', '', False, True)
         return _vals_from_raw(raw, stock)
 
     def _try_ctx_history_data(stock):
-        """ContextInfo.get_history_data with positional args."""
-        raw = ContextInfo.get_history_data(['close'], [stock], '1d', 'none', 60)
+        """get_history_data — C++: (count, period, stock_code, dividend_type)"""
+        raw = ContextInfo.get_history_data(60, '1d', stock, 'none')
         return _vals_from_raw(raw, stock)
 
     def _try_ctx_local_data(stock):
-        """ContextInfo.get_local_data with positional args."""
-        raw = ContextInfo.get_local_data(['close'], [stock], '1d', 'none', 60)
+        """get_local_data — QMT 推荐用 get_market_data_ex(subscribe=False) 替代，此处仅为探测"""
+        raw = ContextInfo.get_local_data(stock, '1d', 'none', 60)
         return _vals_from_raw(raw, stock)
 
     def _try_ctx_keyword(stock):
@@ -585,11 +598,9 @@ def init(ContextInfo):
             _log_print('INFO', '[VERIFY] %s count=60 => %d bars, first=%.2f last=%.2f',
                        stock_code, actual_count, first_val, vals[-1] if actual_count > 0 else 0)
             if actual_count < 60:
-                _log_print('ERROR', '[VERIFY] %s only %d bars! Download history data for this stock in QMT.',
-                           stock_code, actual_count)
+                _log_print('ERROR', '[VERIFY] %s only %d bars! Data still empty after auto-download.', stock_code, actual_count)
             elif first_val < 50:
-                _log_print('ERROR', '[VERIFY] %s first bar=%.2f (stale data). Download history data for this stock in QMT.',
-                           stock_code, first_val)
+                _log_print('ERROR', '[VERIFY] %s first bar=%.2f (stale data).', stock_code, first_val)
             else:
                 _log_print('INFO', '[VERIFY] %s data looks OK.', stock_code)
         except Exception as e:
@@ -916,15 +927,11 @@ def _get_history_bars(stock_code, count=60):
         elif api == 'ctx_market_data_ex':
             raw_data = _ctx.get_market_data_ex(
                 ['open', 'high', 'low', 'close', 'volume'],
-                [stock_code], '1d', 'none', count)
+                [stock_code], '1d', 'none', count, '', '', False, True)
         elif api == 'ctx_history_data':
-            raw_data = _ctx.get_history_data(
-                ['open', 'high', 'low', 'close', 'volume'],
-                [stock_code], '1d', 'none', count)
+            raw_data = _ctx.get_history_data(count, '1d', stock_code, 'none')
         elif api == 'ctx_local_data':
-            raw_data = _ctx.get_local_data(
-                ['open', 'high', 'low', 'close', 'volume'],
-                [stock_code], '1d', 'none', count)
+            raw_data = _ctx.get_local_data(stock_code, '1d', 'none', count)
         elif api == 'ctx_keyword':
             raw_data = _ctx.get_market_data(
                 field_list=['open', 'high', 'low', 'close', 'volume'],
