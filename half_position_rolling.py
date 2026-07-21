@@ -487,82 +487,84 @@ def init(ContextInfo):
         if hasattr(ContextInfo, method_name):
             _log_print('INFO', '[DIAG] has method: %s', method_name)
 
-    # === Auto-detect which data API works in this QMT version ===
+    # === Download + Probe: use ContextInfo.get_market_data_ex (official recommended API) ===
+    # Docs: ContextInfo.get_market_data_ex(
+    #   fields=[], stock_code=[], period='1d', start_time='', end_time='',
+    #   count=-1, dividend_type='none', fill_data=True, subscribe=True/False)
     global _BEST_API
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     _BEST_API = 'none'
 
-    # === Download history data for all stocks (one-time per stock, cached after) ===
-    download_success = False
+    # Step 1: download history via ContextInfo.download_history_data (strategy-context method)
     for stock_code in _pool_codes:
         try:
-            _log_print('INFO', '[DOWNLOAD] downloading %s daily bars...', stock_code)
-            xtdata.download_history_data(stock_code, '1d', '20200101', '')
-            download_success = True
-            _log_print('INFO', '[DOWNLOAD] %s download finished.', stock_code)
+            _log_print('INFO', '[DOWNLOAD] %s via ContextInfo.download_history_data...', stock_code)
+            ContextInfo.download_history_data(stock_code, '1d', '20200101', '')
+            _log_print('INFO', '[DOWNLOAD] %s done.', stock_code)
         except Exception as e:
-            _log_print('WARN', '[DOWNLOAD] %s download failed: %s', stock_code, str(e))
-    # Also try xtdata.download_history_data2 with no end date
-    if not download_success:
-        for stock_code in _pool_codes:
-            try:
-                _log_print('INFO', '[DOWNLOAD2] downloading %s (alt method)...', stock_code)
-                xtdata.download_history_data2(stock_code, '1d', '20200101', '')
-                download_success = True
-                _log_print('INFO', '[DOWNLOAD2] %s download finished.', stock_code)
-            except Exception as e:
-                _log_print('WARN', '[DOWNLOAD2] %s download failed: %s', stock_code, str(e))
+            _log_print('WARN', '[DOWNLOAD] %s ContextInfo download failed: %s', stock_code, str(e))
 
-    def _try_ctx_positional(stock):
-        """ContextInfo.get_market_data with positional args."""
+    # Step 2: probe all available APIs
+    def _try_get_market_data_ex(stock):
+        """ContextInfo.get_market_data_ex -- subscribe=False reads local cache only."""
+        raw = ContextInfo.get_market_data_ex(
+            fields=['close'], stock_code=[stock],
+            period='1d', count=60, dividend_type='none',
+            subscribe=False, fill_data=True)
+        return _vals_from_raw(raw, stock)
+
+    def _try_get_market_data_ex_sub(stock):
+        """ContextInfo.get_market_data_ex -- subscribe=True fetches live + local."""
+        raw = ContextInfo.get_market_data_ex(
+            fields=['close'], stock_code=[stock],
+            period='1d', count=60, dividend_type='none',
+            subscribe=True, fill_data=True)
+        return _vals_from_raw(raw, stock)
+
+    def _try_get_market_data(stock):
+        """ContextInfo.get_market_data -- legacy, positional args only."""
         raw = ContextInfo.get_market_data(['close'], [stock], '1d', 'none')
         return _vals_from_raw(raw, stock)
 
-    def _try_ctx_market_data_ex(stock):
-        """get_market_data_ex -- C++: (fields, stocks, period, div_type, count, start_time, end_time, subscribe, fill)"""
-        raw = ContextInfo.get_market_data_ex(
-            ['close'], [stock], '1d', 'none', 60, '', '', False, True)
+    def _try_xtdata_local(stock):
+        """xtdata.get_local_data -- offline, reads downloaded cache."""
+        raw = xtdata.get_local_data(
+            field_list=[], stock_list=[stock],
+            period='1d', start_time='', count=60,
+            dividend_type='none', fill_data=True)
         return _vals_from_raw(raw, stock)
 
-    def _try_ctx_history_data(stock):
-        """get_history_data -- C++: (count, period, stock_code, dividend_type)"""
-        raw = ContextInfo.get_history_data(60, '1d', stock, 'none')
+    def _try_xtdata_ex(stock):
+        """xtdata.get_market_data_ex -- requires miniQMT running."""
+        raw = xtdata.get_market_data_ex(
+            field_list=[], stock_list=[stock],
+            period='1d', start_time='', count=60,
+            dividend_type='none', fill_data=True)
         return _vals_from_raw(raw, stock)
-
-    def _try_ctx_local_data(stock):
-        """get_local_data -- use get_market_data_ex(subscribe=False) instead, this is only a probe"""
-        raw = ContextInfo.get_local_data(stock, '1d', 'none', 60)
-        return _vals_from_raw(raw, stock)
-
-    def _try_ctx_keyword(stock):
-        """ContextInfo.get_market_data with keyword args."""
-        raw = ContextInfo.get_market_data(
-            field_list=['close'], stock_list=[stock], period='1d',
-            dividend_type='none', count=60)
-        return _vals_from_raw(raw)
-
-    def _try_xtdata(stock):
-        """xtdata.get_market_data with keyword args."""
-        raw = xtdata.get_market_data(
-            field_list=['close'], stock_list=[stock], period='1d',
-            dividend_type='none', count=60)
-        return _vals_from_raw(raw)
 
     def _vals_from_raw(raw, stock):
         if raw is None:
             return []
-        vals = list(raw.values) if hasattr(raw, 'values') else (raw.get('close', {}).get(stock) if isinstance(raw, dict) else [])
-        return vals if vals else []
+        if isinstance(raw, dict):
+            df = raw.get(stock)
+            if df is not None and hasattr(df, 'values'):
+                vals = list(df['close'].values) if 'close' in df.columns else []
+                return vals if vals else []
+            return []
+        if hasattr(raw, 'values'):
+            return list(raw.values) if raw.values else []
+        return []
+
+    probes = [
+        ('get_market_data_ex', _try_get_market_data_ex, 'ctx get_market_data_ex(subscribe=False)'),
+        ('get_market_data_ex_sub', _try_get_market_data_ex_sub, 'ctx get_market_data_ex(subscribe=True)'),
+        ('get_market_data', _try_get_market_data, 'ctx get_market_data'),
+        ('xtdata_local', _try_xtdata_local, 'xtdata get_local_data'),
+        ('xtdata_ex', _try_xtdata_ex, 'xtdata get_market_data_ex'),
+    ]
 
     for stock_code in _pool_codes:
-        for name, fn, label in [
-            ('ctx_positional', _try_ctx_positional, 'ContextInfo positional'),
-            ('ctx_market_data_ex', _try_ctx_market_data_ex, 'ContextInfo get_market_data_ex'),
-            ('ctx_history_data', _try_ctx_history_data, 'ContextInfo get_history_data'),
-            ('ctx_local_data', _try_ctx_local_data, 'ContextInfo get_local_data'),
-            ('ctx_keyword', _try_ctx_keyword, 'ContextInfo keyword'),
-            ('xtdata', _try_xtdata, 'xtdata keyword'),
-        ]:
+        for name, fn, label in probes:
             try:
                 vals = fn(stock_code)
                 actual_count = len(vals)
@@ -580,31 +582,11 @@ def init(ContextInfo):
             break
 
     if _BEST_API == 'none':
-        _log_print('ERROR', '[PROBE] No working data API found! Auto-download finished but all APIs returned empty.')
-        _log_print('ERROR', '[PROBE] Check QMT data connection for: %s', ','.join(_pool_codes))
-        _BEST_API = 'ctx_positional'  # fallback, will likely fail at runtime
-
-    # === VERIFY: pull bars with the best API (no count arg -- C++ API doesn't support it)
-    for stock_code in _pool_codes:
-        try:
-            if _BEST_API == 'ctx_positional':
-                raw = _ctx.get_market_data(
-                    ['close'], [stock_code], '1d', 'none')
-            else:
-                raw = None  # already probed, xtdata / keyword didn't work
-            vals = list(raw.values) if raw is not None and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else None)
-            actual_count = len(vals) if vals else 0
-            first_val = vals[0] if actual_count > 0 else 0
-            _log_print('INFO', '[VERIFY] %s count=60 => %d bars, first=%.2f last=%.2f',
-                       stock_code, actual_count, first_val, vals[-1] if actual_count > 0 else 0)
-            if actual_count < 60:
-                _log_print('ERROR', '[VERIFY] %s only %d bars! Data still empty after auto-download.', stock_code, actual_count)
-            elif first_val < 50:
-                _log_print('ERROR', '[VERIFY] %s first bar=%.2f (stale data).', stock_code, first_val)
-            else:
-                _log_print('INFO', '[VERIFY] %s data looks OK.', stock_code)
-        except Exception as e:
-            _log_print('WARN', '[VERIFY] %s check error: %s', stock_code, str(e))
+        _log_print('ERROR', '[PROBE] ALL APIs returned empty! QMT environment issue:')
+        _log_print('ERROR', '[PROBE]   1) Make sure miniQMT is running')
+        _log_print('ERROR', '[PROBE]   2) Make sure 603501.SH data is included in your QMT data package')
+        _log_print('ERROR', '[PROBE]   3) In QMT GUI, right-click stock -> download history data for 1d')
+        _BEST_API = 'get_market_data_ex'  # fallback to the recommended API
 
     state = ensure_state()
     reset_daily_state(state, today)
@@ -920,35 +902,49 @@ def _get_history_bars(stock_code, count=60):
     try:
         # Use the API mode detected at init
         api = _BEST_API
-        if api == 'ctx_positional':
-            raw_data = _ctx.get_market_data(
-                ['open', 'high', 'low', 'close', 'volume'],
-                [stock_code], '1d', 'none')
-        elif api == 'ctx_market_data_ex':
+        fields = ['open', 'high', 'low', 'close', 'volume']
+
+        if api in ('get_market_data_ex', 'get_market_data_ex_sub'):
             raw_data = _ctx.get_market_data_ex(
-                ['open', 'high', 'low', 'close', 'volume'],
-                [stock_code], '1d', 'none', count, '', '', False, True)
-        elif api == 'ctx_history_data':
-            raw_data = _ctx.get_history_data(count, '1d', stock_code, 'none')
-        elif api == 'ctx_local_data':
-            raw_data = _ctx.get_local_data(stock_code, '1d', 'none', count)
-        elif api == 'ctx_keyword':
-            raw_data = _ctx.get_market_data(
-                field_list=['open', 'high', 'low', 'close', 'volume'],
-                stock_list=[stock_code], period='1d',
-                dividend_type='none', count=count)
-        else:  # xtdata
-            raw_data = xtdata.get_market_data(
-                field_list=['open', 'high', 'low', 'close', 'volume'],
-                stock_list=[stock_code], period='1d',
-                dividend_type='none', count=count)
-        # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
-        # Extract series directly
-        result = {}
-        for field in ('open', 'high', 'low', 'close', 'volume'):
-            series = raw_data.get(field)
-            arr = list(series.values) if hasattr(series, 'values') else list(series)
-            result[field] = arr
+                fields=fields, stock_code=[stock_code],
+                period='1d', count=count, dividend_type='none',
+                subscribe=(api == 'get_market_data_ex_sub'),
+                fill_data=True)
+        elif api == 'get_market_data':
+            raw_data = _ctx.get_market_data(fields, [stock_code], '1d', 'none')
+        elif api == 'xtdata_local':
+            raw_data = xtdata.get_local_data(
+                field_list=[], stock_list=[stock_code],
+                period='1d', start_time='', count=count,
+                dividend_type='none', fill_data=True)
+        elif api == 'xtdata_ex':
+            raw_data = xtdata.get_market_data_ex(
+                field_list=[], stock_list=[stock_code],
+                period='1d', start_time='', count=count,
+                dividend_type='none', fill_data=True)
+        else:
+            # fallback
+            raw_data = _ctx.get_market_data_ex(
+                fields=fields, stock_code=[stock_code],
+                period='1d', count=count, dividend_type='none',
+                subscribe=False, fill_data=True)
+
+        # raw_data is {stock_code: DataFrame} from official API
+        if isinstance(raw_data, dict) and stock_code in raw_data:
+            df = raw_data[stock_code]
+            result = {}
+            for field in fields:
+                if field in df.columns:
+                    result[field] = list(df[field].values)
+                else:
+                    result[field] = []
+        else:
+            # fallback: old-style dict-of-series format
+            result = {}
+            for field in fields:
+                series = raw_data.get(field)
+                arr = list(series.values) if hasattr(series, 'values') else (list(series) if series else [])
+                result[field] = arr
         closes = result['close']
         if len(closes) == 0:
             _log_print('WARN', '[DATA] %s returned empty history', stock_code)
