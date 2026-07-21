@@ -396,6 +396,7 @@ g = G()
 _ctx = None
 _pool_codes = []
 _HISTORY_CACHE = {}
+_BEST_API = 'none'
 
 
 def _heartbeat(now_time):
@@ -487,6 +488,7 @@ def init(ContextInfo):
             _log_print('INFO', '[DIAG] has method: %s', method_name)
 
     # === Auto-detect which data API works in this QMT version ===
+    global _BEST_API
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     _BEST_API = 'none'
 
@@ -551,7 +553,7 @@ def init(ContextInfo):
         try:
             raw = ContextInfo.get_market_data(
                 ['close'], [stock_code], '1d', 'none', 60)
-            vals = list(raw.values) if raw and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else None)
+            vals = list(raw.values) if raw is not None and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else None)
             actual_count = len(vals) if vals else 0
             first_val = vals[0] if actual_count > 0 else 0
             _log_print('INFO', '[VERIFY] %s count=60 => %d bars, first=%.2f last=%.2f',
