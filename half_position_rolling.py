@@ -495,14 +495,14 @@ def init(ContextInfo):
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     _BEST_API = 'none'
 
-    # Step 1: download history via ContextInfo.download_history_data (strategy-context method)
+    # Step 1: download history via xtdata (ContextInfo has no download_history_data method)
     for stock_code in _pool_codes:
         try:
-            _log_print('INFO', '[DOWNLOAD] %s via ContextInfo.download_history_data...', stock_code)
-            ContextInfo.download_history_data(stock_code, '1d', '20200101', '')
+            _log_print('INFO', '[DOWNLOAD] %s via xtdata.download_history_data...', stock_code)
+            xtdata.download_history_data(stock_code, '1d', '20200101', '')
             _log_print('INFO', '[DOWNLOAD] %s done.', stock_code)
         except Exception as e:
-            _log_print('WARN', '[DOWNLOAD] %s ContextInfo download failed: %s', stock_code, str(e))
+            _log_print('WARN', '[DOWNLOAD] %s xtdata download failed: %s', stock_code, str(e))
 
     # Step 2: probe all available APIs
     def _try_get_market_data_ex(stock):
