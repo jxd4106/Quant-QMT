@@ -492,6 +492,15 @@ def init(ContextInfo):
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     _BEST_API = 'none'
 
+    # === Download history data for all stocks (one-time per stock, cached after) ===
+    for stock_code in _pool_codes:
+        try:
+            _log_print('INFO', '[DOWNLOAD] downloading %s daily bars...', stock_code)
+            xtdata.download_history_data(stock_code, '1d', '20200101', '')
+            _log_print('INFO', '[DOWNLOAD] %s download finished (may be cached).', stock_code)
+        except Exception as e:
+            _log_print('WARN', '[DOWNLOAD] %s download failed: %s', stock_code, str(e))
+
     def _try_ctx_positional(stock):
         """ContextInfo.get_market_data with positional args (no count)."""
         raw = ContextInfo.get_market_data(['close'], [stock], '1d', 'none')
