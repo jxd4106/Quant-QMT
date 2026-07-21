@@ -486,15 +486,70 @@ def init(ContextInfo):
         if hasattr(ContextInfo, method_name):
             _log_print('INFO', '[DIAG] has method: %s', method_name)
 
-    # === Download full history data for all stocks ===
+    # === Auto-detect which data API works in this QMT version ===
     today = datetime.datetime.now().strftime('%Y-%m-%d')
-    for stock_code in _pool_codes:
-        _log_print('INFO', '[INIT] %s using QMT cached data', stock_code)
+    _BEST_API = 'none'
 
-    # === VERIFY: pull 60 bars via _ctx (ContextInfo knows where QMT stores data) ===
+    def _try_ctx_positional(stock):
+        """ContextInfo.get_market_data with positional args."""
+        raw = ContextInfo.get_market_data(['close'], [stock], '1d', 'none', 60)
+        return _vals_from_raw(raw)
+
+    def _try_ctx_keyword(stock):
+        """ContextInfo.get_market_data with keyword args."""
+        raw = ContextInfo.get_market_data(
+            field_list=['close'], stock_list=[stock], period='1d',
+            dividend_type='none', count=60)
+        return _vals_from_raw(raw)
+
+    def _try_xtdata(stock):
+        """xtdata.get_market_data with keyword args."""
+        raw = xtdata.get_market_data(
+            field_list=['close'], stock_list=[stock], period='1d',
+            dividend_type='none', count=60)
+        return _vals_from_raw(raw)
+
+    def _vals_from_raw(raw):
+        if raw is None:
+            return []
+        vals = list(raw.values) if hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else [])
+        return vals if vals else []
+
+    for stock_code in _pool_codes:
+        for name, fn, label in [
+            ('ctx_positional', _try_ctx_positional, 'ContextInfo positional'),
+            ('ctx_keyword', _try_ctx_keyword, 'ContextInfo keyword'),
+            ('xtdata', _try_xtdata, 'xtdata keyword'),
+        ]:
+            try:
+                vals = fn(stock_code)
+                actual_count = len(vals)
+                first_val = vals[0] if actual_count > 0 else 0
+                last_val = vals[-1] if actual_count > 0 else 0
+                _log_print('INFO', '[PROBE] %s via %s => %d bars, %.2f~%.2f',
+                           stock_code, label, actual_count, first_val, last_val)
+                if actual_count >= 60 and first_val > 50:
+                    _BEST_API = name
+                    _log_print('INFO', '[PROBE] Selected: %s', label)
+                    break
+            except Exception as e:
+                _log_print('WARN', '[PROBE] %s via %s: %s', stock_code, label, str(e))
+        if _BEST_API != 'none':
+            break
+
+    if _BEST_API == 'none':
+        _log_print('ERROR', '[PROBE] No working data API found! Strategy cannot calculate indicators.')
+        _log_print('ERROR', '[PROBE] In QMT, manually download history data for: %s', ','.join(_pool_codes))
+        _BEST_API = 'ctx_positional'  # fallback, will likely fail at runtime
+
+    # === Download full history data for all stocks ===
+    for stock_code in _pool_codes:
+        _log_print('INFO', '[INIT] %s using QMT cached data (api=%s)', stock_code, _BEST_API)
+
+    # === VERIFY: pull 60 bars with the best API ===
     for stock_code in _pool_codes:
         try:
-            raw = _ctx.get_market_data(
+            raw = ContextInfo.get_market_data(
                 ['close'], [stock_code], '1d', 'none', 60)
             vals = list(raw.values) if raw and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else None)
             actual_count = len(vals) if vals else 0
@@ -824,9 +879,21 @@ def _get_history_bars(stock_code, count=60):
         result = _HISTORY_CACHE[cache_key]
         return _build_history_return(result)
     try:
-        raw_data = _ctx.get_market_data(
-            ['open', 'high', 'low', 'close', 'volume'],
-            [stock_code], '1d', 'none', 60)
+        # Use the API mode detected at init
+        if _BEST_API == 'ctx_positional':
+            raw_data = ContextInfo.get_market_data(
+                ['open', 'high', 'low', 'close', 'volume'],
+                [stock_code], '1d', 'none', 60)
+        elif _BEST_API == 'ctx_keyword':
+            raw_data = ContextInfo.get_market_data(
+                field_list=['open', 'high', 'low', 'close', 'volume'],
+                stock_list=[stock_code], period='1d',
+                dividend_type='none', count=60)
+        else:  # xtdata
+            raw_data = xtdata.get_market_data(
+                field_list=['open', 'high', 'low', 'close', 'volume'],
+                stock_list=[stock_code], period='1d',
+                dividend_type='none', count=60)
         # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
         # Extract series directly
         result = {}
