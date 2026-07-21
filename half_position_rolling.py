@@ -549,13 +549,9 @@ def init(ContextInfo):
             break
 
     if _BEST_API == 'none':
-        _log_print('ERROR', '[PROBE] No working data API found! Strategy cannot calculate indicators.')
-        _log_print('ERROR', '[PROBE] In QMT, manually download history data for: %s', ','.join(_pool_codes))
+        _log_print('ERROR', '[PROBE] No working data API found! Auto-download finished but all APIs returned empty.')
+        _log_print('ERROR', '[PROBE] Check QMT data connection for: %s', ','.join(_pool_codes))
         _BEST_API = 'ctx_positional'  # fallback, will likely fail at runtime
-
-    # === Download full history data for all stocks ===
-    for stock_code in _pool_codes:
-        _log_print('INFO', '[INIT] %s using QMT cached data (api=%s)', stock_code, _BEST_API)
 
     # === VERIFY: pull bars with the best API (no count arg — C++ API doesn't support it)
     for stock_code in _pool_codes:
