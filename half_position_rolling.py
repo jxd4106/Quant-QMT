@@ -433,11 +433,20 @@ def _diagnostic_scan(now_time):
                        'None' if hist is None else '%d bars' % len(hist['close']))
             continue
 
-        close_arr = np.append(hist['close'], bar['close'])
-        open_arr = np.append(hist['open'], bar['open'])
-        high_arr = np.append(hist['high'], bar['high'])
-        low_arr = np.append(hist['low'], bar['low'])
-        vol_arr = np.append(hist['volume'], bar['volume'])
+        close_arr = hist['close'].copy()
+        open_arr = hist['open'].copy()
+        high_arr = hist['high'].copy()
+        low_arr = hist['low'].copy()
+        vol_arr = hist['volume'].copy()
+        # Only append live bar if it's newer than the last history bar
+        # (history may already include today's partial/complete bar)
+        last_hist_close = close_arr[-1]
+        if abs(bar['close'] - last_hist_close) > 0.001:
+            close_arr = np.append(close_arr, bar['close'])
+            open_arr = np.append(open_arr, bar['open'])
+            high_arr = np.append(high_arr, bar['high'])
+            low_arr = np.append(low_arr, bar['low'])
+            vol_arr = np.append(vol_arr, bar['volume'])
         ind = calc_indicators(open_arr, high_arr, low_arr, close_arr, vol_arr)
         i = len(close_arr) - 1
         s1, s2, s3, b1, b2, b3 = calc_signals(ind, i)
