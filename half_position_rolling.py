@@ -438,15 +438,12 @@ def _diagnostic_scan(now_time):
         high_arr = hist['high'].copy()
         low_arr = hist['low'].copy()
         vol_arr = hist['volume'].copy()
-        # Only append live bar if it's newer than the last history bar
-        # (history may already include today's partial/complete bar)
-        last_hist_close = close_arr[-1]
-        if abs(bar['close'] - last_hist_close) > 0.001:
-            close_arr = np.append(close_arr, bar['close'])
-            open_arr = np.append(open_arr, bar['open'])
-            high_arr = np.append(high_arr, bar['high'])
-            low_arr = np.append(low_arr, bar['low'])
-            vol_arr = np.append(vol_arr, bar['volume'])
+        # Replace last bar with live tick since it's today's partial bar
+        close_arr[-1] = bar['close']
+        open_arr[-1] = bar['open']
+        high_arr[-1] = max(bar['high'], high_arr[-1])
+        low_arr[-1] = min(bar['low'], low_arr[-1])
+        vol_arr[-1] = vol_arr[-1] + bar['volume']
         ind = calc_indicators(open_arr, high_arr, low_arr, close_arr, vol_arr)
         i = len(close_arr) - 1
         s1, s2, s3, b1, b2, b3 = calc_signals(ind, i)
@@ -499,7 +496,7 @@ def init(ContextInfo):
     # === Download + Probe: use ContextInfo.get_market_data_ex (official recommended API) ===
     # Docs: ContextInfo.get_market_data_ex(
     #   fields=[], stock_code=[], period='1d', start_time='', end_time='',
-    #   count=-1, dividend_type='none', fill_data=True, subscribe=True/False)
+    #   count=-1, dividend_type='front', fill_data=True, subscribe=True/False)
     global _BEST_API
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     _BEST_API = 'none'
@@ -518,7 +515,7 @@ def init(ContextInfo):
         """ContextInfo.get_market_data_ex -- subscribe=False reads local cache only."""
         raw = ContextInfo.get_market_data_ex(
             fields=['close'], stock_code=[stock],
-            period='1d', count=60, dividend_type='none',
+            period='1d', count=60, dividend_type='front',
             subscribe=False, fill_data=True)
         return _vals_from_raw(raw, stock)
 
@@ -526,7 +523,7 @@ def init(ContextInfo):
         """ContextInfo.get_market_data_ex -- subscribe=True fetches live + local."""
         raw = ContextInfo.get_market_data_ex(
             fields=['close'], stock_code=[stock],
-            period='1d', count=60, dividend_type='none',
+            period='1d', count=60, dividend_type='front',
             subscribe=True, fill_data=True)
         return _vals_from_raw(raw, stock)
 
@@ -540,7 +537,7 @@ def init(ContextInfo):
         raw = xtdata.get_local_data(
             field_list=[], stock_list=[stock],
             period='1d', start_time='', count=60,
-            dividend_type='none', fill_data=True)
+            dividend_type='front', fill_data=True)
         return _vals_from_raw(raw, stock)
 
     def _try_xtdata_ex(stock):
@@ -548,7 +545,7 @@ def init(ContextInfo):
         raw = xtdata.get_market_data_ex(
             field_list=[], stock_list=[stock],
             period='1d', start_time='', count=60,
-            dividend_type='none', fill_data=True)
+            dividend_type='front', fill_data=True)
         return _vals_from_raw(raw, stock)
 
     def _vals_from_raw(raw, stock):
@@ -916,7 +913,7 @@ def _get_history_bars(stock_code, count=60):
         if api in ('get_market_data_ex', 'get_market_data_ex_sub'):
             raw_data = _ctx.get_market_data_ex(
                 fields=fields, stock_code=[stock_code],
-                period='1d', count=count, dividend_type='none',
+                period='1d', count=count, dividend_type='front',
                 subscribe=(api == 'get_market_data_ex_sub'),
                 fill_data=True)
         elif api == 'get_market_data':
@@ -925,17 +922,17 @@ def _get_history_bars(stock_code, count=60):
             raw_data = xtdata.get_local_data(
                 field_list=[], stock_list=[stock_code],
                 period='1d', start_time='', count=count,
-                dividend_type='none', fill_data=True)
+                dividend_type='front', fill_data=True)
         elif api == 'xtdata_ex':
             raw_data = xtdata.get_market_data_ex(
                 field_list=[], stock_list=[stock_code],
                 period='1d', start_time='', count=count,
-                dividend_type='none', fill_data=True)
+                dividend_type='front', fill_data=True)
         else:
             # fallback
             raw_data = _ctx.get_market_data_ex(
                 fields=fields, stock_code=[stock_code],
-                period='1d', count=count, dividend_type='none',
+                period='1d', count=count, dividend_type='front',
                 subscribe=False, fill_data=True)
 
         # raw_data is {stock_code: DataFrame} from official API
