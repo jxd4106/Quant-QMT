@@ -502,8 +502,23 @@ def init(ContextInfo):
             _log_print('WARN', '[DOWNLOAD] %s download failed: %s', stock_code, str(e))
 
     def _try_ctx_positional(stock):
-        """ContextInfo.get_market_data with positional args (no count)."""
+        """ContextInfo.get_market_data with positional args."""
         raw = ContextInfo.get_market_data(['close'], [stock], '1d', 'none')
+        return _vals_from_raw(raw, stock)
+
+    def _try_ctx_market_data_ex(stock):
+        """ContextInfo.get_market_data_ex with positional args."""
+        raw = ContextInfo.get_market_data_ex(['close'], [stock], '1d', 'none', 60)
+        return _vals_from_raw(raw, stock)
+
+    def _try_ctx_history_data(stock):
+        """ContextInfo.get_history_data with positional args."""
+        raw = ContextInfo.get_history_data(['close'], [stock], '1d', 'none', 60)
+        return _vals_from_raw(raw, stock)
+
+    def _try_ctx_local_data(stock):
+        """ContextInfo.get_local_data with positional args."""
+        raw = ContextInfo.get_local_data(['close'], [stock], '1d', 'none', 60)
         return _vals_from_raw(raw, stock)
 
     def _try_ctx_keyword(stock):
@@ -529,6 +544,9 @@ def init(ContextInfo):
     for stock_code in _pool_codes:
         for name, fn, label in [
             ('ctx_positional', _try_ctx_positional, 'ContextInfo positional'),
+            ('ctx_market_data_ex', _try_ctx_market_data_ex, 'ContextInfo get_market_data_ex'),
+            ('ctx_history_data', _try_ctx_history_data, 'ContextInfo get_history_data'),
+            ('ctx_local_data', _try_ctx_local_data, 'ContextInfo get_local_data'),
             ('ctx_keyword', _try_ctx_keyword, 'ContextInfo keyword'),
             ('xtdata', _try_xtdata, 'xtdata keyword'),
         ]:
@@ -890,20 +908,33 @@ def _get_history_bars(stock_code, count=60):
         return _build_history_return(result)
     try:
         # Use the API mode detected at init
-        if _BEST_API == 'ctx_positional':
+        api = _BEST_API
+        if api == 'ctx_positional':
             raw_data = _ctx.get_market_data(
                 ['open', 'high', 'low', 'close', 'volume'],
                 [stock_code], '1d', 'none')
-        elif _BEST_API == 'ctx_keyword':
+        elif api == 'ctx_market_data_ex':
+            raw_data = _ctx.get_market_data_ex(
+                ['open', 'high', 'low', 'close', 'volume'],
+                [stock_code], '1d', 'none', count)
+        elif api == 'ctx_history_data':
+            raw_data = _ctx.get_history_data(
+                ['open', 'high', 'low', 'close', 'volume'],
+                [stock_code], '1d', 'none', count)
+        elif api == 'ctx_local_data':
+            raw_data = _ctx.get_local_data(
+                ['open', 'high', 'low', 'close', 'volume'],
+                [stock_code], '1d', 'none', count)
+        elif api == 'ctx_keyword':
             raw_data = _ctx.get_market_data(
                 field_list=['open', 'high', 'low', 'close', 'volume'],
                 stock_list=[stock_code], period='1d',
-                dividend_type='none', count=60)
+                dividend_type='none', count=count)
         else:  # xtdata
             raw_data = xtdata.get_market_data(
                 field_list=['open', 'high', 'low', 'close', 'volume'],
                 stock_list=[stock_code], period='1d',
-                dividend_type='none', count=60)
+                dividend_type='none', count=count)
         # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
         # Extract series directly
         result = {}
@@ -912,6 +943,9 @@ def _get_history_bars(stock_code, count=60):
             arr = list(series.values) if hasattr(series, 'values') else list(series)
             result[field] = arr
         closes = result['close']
+        if len(closes) == 0:
+            _log_print('WARN', '[DATA] %s returned empty history', stock_code)
+            return None
         _log_print('INFO', '[DATA] %s loaded %d bars, close range: %.2f ~ %.2f',
                    stock_code, len(closes), closes[0], closes[-1])
         _HISTORY_CACHE[cache_key] = result
