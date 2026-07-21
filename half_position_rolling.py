@@ -493,9 +493,9 @@ def init(ContextInfo):
     _BEST_API = 'none'
 
     def _try_ctx_positional(stock):
-        """ContextInfo.get_market_data with positional args."""
-        raw = ContextInfo.get_market_data(['close'], [stock], '1d', 'none', 60)
-        return _vals_from_raw(raw)
+        """ContextInfo.get_market_data with positional args (no count)."""
+        raw = ContextInfo.get_market_data(['close'], [stock], '1d', 'none')
+        return _vals_from_raw(raw, stock)
 
     def _try_ctx_keyword(stock):
         """ContextInfo.get_market_data with keyword args."""
@@ -511,10 +511,10 @@ def init(ContextInfo):
             dividend_type='none', count=60)
         return _vals_from_raw(raw)
 
-    def _vals_from_raw(raw):
+    def _vals_from_raw(raw, stock):
         if raw is None:
             return []
-        vals = list(raw.values) if hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else [])
+        vals = list(raw.values) if hasattr(raw, 'values') else (raw.get('close', {}).get(stock) if isinstance(raw, dict) else [])
         return vals if vals else []
 
     for stock_code in _pool_codes:
@@ -548,11 +548,14 @@ def init(ContextInfo):
     for stock_code in _pool_codes:
         _log_print('INFO', '[INIT] %s using QMT cached data (api=%s)', stock_code, _BEST_API)
 
-    # === VERIFY: pull 60 bars with the best API ===
+    # === VERIFY: pull bars with the best API (no count arg — C++ API doesn't support it)
     for stock_code in _pool_codes:
         try:
-            raw = ContextInfo.get_market_data(
-                ['close'], [stock_code], '1d', 'none', 60)
+            if _BEST_API == 'ctx_positional':
+                raw = ContextInfo.get_market_data(
+                    ['close'], [stock_code], '1d', 'none')
+            else:
+                raw = None  # already probed, xtdata / keyword didn't work
             vals = list(raw.values) if raw is not None and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else None)
             actual_count = len(vals) if vals else 0
             first_val = vals[0] if actual_count > 0 else 0
@@ -885,7 +888,7 @@ def _get_history_bars(stock_code, count=60):
         if _BEST_API == 'ctx_positional':
             raw_data = ContextInfo.get_market_data(
                 ['open', 'high', 'low', 'close', 'volume'],
-                [stock_code], '1d', 'none', 60)
+                [stock_code], '1d', 'none')
         elif _BEST_API == 'ctx_keyword':
             raw_data = ContextInfo.get_market_data(
                 field_list=['open', 'high', 'low', 'close', 'volume'],
