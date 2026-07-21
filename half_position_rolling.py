@@ -383,6 +383,7 @@ class G:
     sold_today = {}
     stop_loss_triggered = {}
     last_signal_time = ''
+    last_scan_time = ''
     daily_stop_count = 0
     last_date = ''
     last_heartbeat = ''
@@ -612,7 +613,7 @@ def handlebar(ContextInfo):
         _log_print('INFO', '[DAY] New day: %s', today)
 
     # Heartbeat + diagnostic scan every 10 minutes
-    # ALSO log diagnostic at 14:55 signal time to capture the final trade decision
+    # At 14:55 signal time, also log diagnostic ONCE to capture the final trade decision
     fired = _heartbeat(now_time)
     sig_time = None
     for stock_code in _pool_codes:
@@ -620,8 +621,14 @@ def handlebar(ContextInfo):
             sig_time = get_signal_time(now_time, stock_code)
             if sig_time:
                 break
-    if fired or sig_time:
+    if fired:
         _diagnostic_scan(now_time)
+    elif sig_time:
+        # Signal time but NOT heartbeat time: scan once per signal minute
+        sig_key = '%s:%s' % (today, sig_time)
+        if g.last_scan_time != sig_key:
+            g.last_scan_time = sig_key
+            _diagnostic_scan(now_time)
 
     sig_ran_today = False
     for stock_code in _pool_codes:
