@@ -519,7 +519,7 @@ def init(ContextInfo):
         return _vals_from_raw(raw, stock)
 
     def _try_ctx_market_data_ex(stock):
-        """get_market_data_ex — C++: (fields, stocks, period, div_type, count, start_time, end_time, subscribe, fill)"""
+        """get_market_data_ex -- C++: (fields, stocks, period, div_type, count, start_time, end_time, subscribe, fill)"""
         raw = ContextInfo.get_market_data_ex(
             ['close'], [stock], '1d', 'none', 60, '', '', False, True)
         return _vals_from_raw(raw, stock)
