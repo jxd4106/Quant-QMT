@@ -489,34 +489,13 @@ def init(ContextInfo):
     # === Download full history data for all stocks ===
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     for stock_code in _pool_codes:
-        for attempt in range(1, 4):
-            try:
-                xtdata.download_history_data(stock_code, period='1d', start_time='20260101', end_time=today)
-                _log_print('INFO', '[INIT] %s history data downloaded', stock_code)
-                break
-            except Exception:
-                if attempt < 3:
-                    time.sleep(2)
-        else:
-            _log_print('WARN', '[INIT] %s history download failed 3x, will try cached', stock_code)
+        _log_print('INFO', '[INIT] %s using QMT cached data', stock_code)
 
-    # Warm up the data cache by pulling 60 bars with xtdata, so _ctx can read them
+    # === VERIFY: pull 60 bars via _ctx (ContextInfo knows where QMT stores data) ===
     for stock_code in _pool_codes:
         try:
-            xtdata.download_history_data(stock_code, period='1d', start_time='20260101', end_time=today)
-            _log_print('INFO', '[INIT] %s xtdata download ok', stock_code)
-        except Exception as e:
-            _log_print('WARN', '[INIT] %s xtdata download error (non-fatal): %s', stock_code, str(e))
-
-    # === VERIFY: pull 60 bars via xtdata ===
-    for stock_code in _pool_codes:
-        try:
-            raw = xtdata.get_market_data(
-                field_list=['close'],
-                stock_list=[stock_code],
-                period='1d',
-                dividend_type='none',
-                count=60)
+            raw = _ctx.get_market_data(
+                ['close'], [stock_code], '1d', 'none', 60)
             vals = list(raw.values) if raw and hasattr(raw, 'values') else (raw.get('close', {}).get(stock_code) if isinstance(raw, dict) else None)
             actual_count = len(vals) if vals else 0
             first_val = vals[0] if actual_count > 0 else 0
@@ -845,10 +824,9 @@ def _get_history_bars(stock_code, count=60):
         result = _HISTORY_CACHE[cache_key]
         return _build_history_return(result)
     try:
-        raw_data = xtdata.get_market_data(
-            field_list=['open', 'high', 'low', 'close', 'volume'],
-            stock_list=[stock_code], period='1d',
-            dividend_type='none', count=60)
+        raw_data = _ctx.get_market_data(
+            ['open', 'high', 'low', 'close', 'volume'],
+            [stock_code], '1d', 'none', 60)
         # raw_data is a dict: {'open': pd.Series, 'close': pd.Series, ...}
         # Extract series directly
         result = {}
