@@ -557,7 +557,7 @@ def init(ContextInfo):
     for stock_code in _pool_codes:
         try:
             if _BEST_API == 'ctx_positional':
-                raw = ContextInfo.get_market_data(
+                raw = _ctx.get_market_data(
                     ['close'], [stock_code], '1d', 'none')
             else:
                 raw = None  # already probed, xtdata / keyword didn't work
@@ -891,11 +891,11 @@ def _get_history_bars(stock_code, count=60):
     try:
         # Use the API mode detected at init
         if _BEST_API == 'ctx_positional':
-            raw_data = ContextInfo.get_market_data(
+            raw_data = _ctx.get_market_data(
                 ['open', 'high', 'low', 'close', 'volume'],
                 [stock_code], '1d', 'none')
         elif _BEST_API == 'ctx_keyword':
-            raw_data = ContextInfo.get_market_data(
+            raw_data = _ctx.get_market_data(
                 field_list=['open', 'high', 'low', 'close', 'volume'],
                 stock_list=[stock_code], period='1d',
                 dividend_type='none', count=60)
