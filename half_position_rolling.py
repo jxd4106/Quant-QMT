@@ -744,6 +744,8 @@ def _process_signal(stock_code, bar, today):
                     cur_pos = int(getattr(p, 'm_nVolume', 0) or 0)
                     profit_rate = float(getattr(p, 'm_dProfitRate', 0) or 0)
                     break
+    except Exception as e:
+        _log_print('WARN', '[POS] get_trade_detail_data(POSITION) error: %s', str(e))
 
     _log_print('INFO', '[SIG] %s signals=%s pos=%d price=%.2f last_sell=%d b2_used=%s',
                stock_code, sig_str, cur_pos, current_price,
