@@ -707,25 +707,7 @@ def _process_signal(stock_code, bar, today):
     i = len(close_arr) - 1
     sig_S1, sig_S2, sig_S3, sig_B1, sig_B2, sig_B3 = calc_signals(ind, i)
 
-    try:
-        asset = xtrading.query_account_data()
-        if asset is None:
-            return 0.0, 0.0
-        total_asset = float(getattr(asset, 'm_dAsset', 0.0) or 0.0)
-        available_cash = float(getattr(asset, 'm_dAvailable', 0.0) or 0.0)
-    except Exception:
-        total_asset = 0.0
-        available_cash = 0.0
-
-    try:
-        pos = xtrading.query_stock_position(stock_code)
-        cur_pos = int(getattr(pos, 'm_dAvailable', 0) or 0)
-        profit_rate = float(getattr(pos, 'profit_rate', 0) or 0)
-    except Exception:
-        cur_pos = 0
-        profit_rate = 0.0
-
-    # DIAGNOSTIC: log signals at decision time so user can see why no trade fires
+    # DIAGNOSTIC: log signals FIRST, before any early-return
     sig_list = []
     if sig_S1: sig_list.append('S1')
     if sig_S2: sig_list.append('S2')
@@ -734,6 +716,31 @@ def _process_signal(stock_code, bar, today):
     if sig_B2: sig_list.append('B2')
     if sig_B3: sig_list.append('B3')
     sig_str = ','.join(sig_list) if sig_list else 'NONE'
+
+    try:
+        asset = xtrading.query_account_data()
+        if asset is None:
+            total_asset = 0.0
+            available_cash = 0.0
+        else:
+            total_asset = float(getattr(asset, 'm_dAsset', 0.0) or 0.0)
+            available_cash = float(getattr(asset, 'm_dAvailable', 0.0) or 0.0)
+    except Exception:
+        total_asset = 0.0
+        available_cash = 0.0
+
+    try:
+        pos = xtrading.query_stock_position(stock_code)
+        if pos is None:
+            cur_pos = 0
+            profit_rate = 0.0
+        else:
+            cur_pos = int(getattr(pos, 'm_dAvailable', 0) or 0)
+            profit_rate = float(getattr(pos, 'profit_rate', 0) or 0)
+    except Exception:
+        cur_pos = 0
+        profit_rate = 0.0
+
     _log_print('INFO', '[SIG] %s signals=%s pos=%d price=%.2f last_sell=%d b2_used=%s',
                stock_code, sig_str, cur_pos, current_price,
                g.last_sell_qty.get(stock_code, 0),
