@@ -998,7 +998,7 @@ def _do_order(stock_code, op_type, qty, limit_price):
             11,                               # prType: limit order
             limit_price if limit_price else 0,  # limit price (0 = market)
             qty,                              # volume in shares
-            '半仓滚动',                        # strategy name
+            'half_position',                    # strategy name
             2,                                # quickTrade: 2 = immediate
             '',                               # userOrderId / remark
             _ctx,                             # ContextInfo
