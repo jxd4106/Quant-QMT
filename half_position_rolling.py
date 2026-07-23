@@ -39,6 +39,9 @@ STOCK_POOL = {
     '603501.SH': {'name': 'Will-SH', 'weight': 1.0},
 }
 
+# Trading account ID (F19) -- required for passorder / get_trade_detail_data
+ACCOUNT_ID = '8890326857'
+
 # ============================================================
 # 2. Technical Indicators
 # ============================================================
@@ -718,28 +721,29 @@ def _process_signal(stock_code, bar, today):
     sig_str = ','.join(sig_list) if sig_list else 'NONE'
 
     try:
-        asset = xtrading.query_account_data()
-        if asset is None:
-            total_asset = 0.0
-            available_cash = 0.0
-        else:
-            total_asset = float(getattr(asset, 'm_dAsset', 0.0) or 0.0)
-            available_cash = float(getattr(asset, 'm_dAvailable', 0.0) or 0.0)
-    except Exception:
+        # Use get_trade_detail_data -- the official QMT strategy API for account/position queries
+        accounts = get_trade_detail_data(ACCOUNT_ID, 'STOCK', 'ACCOUNT')
+        total_asset = 0.0
+        available_cash = 0.0
+        if accounts:
+            acc = accounts[0]
+            total_asset = float(getattr(acc, 'm_dAsset', 0) or 0)
+            available_cash = float(getattr(acc, 'm_dAvailable', 0) or 0)
+    except Exception as e:
+        _log_print('WARN', '[ACCT] get_trade_detail_data(ACCOUNT) error: %s', str(e))
         total_asset = 0.0
         available_cash = 0.0
 
     try:
-        pos = xtrading.query_stock_position(stock_code)
-        if pos is None:
-            cur_pos = 0
-            profit_rate = 0.0
-        else:
-            cur_pos = int(getattr(pos, 'm_dAvailable', 0) or 0)
-            profit_rate = float(getattr(pos, 'profit_rate', 0) or 0)
-    except Exception:
+        positions = get_trade_detail_data(ACCOUNT_ID, 'STOCK', 'POSITION')
         cur_pos = 0
         profit_rate = 0.0
+        if positions:
+            for p in positions:
+                if getattr(p, 'm_strInstrumentID', '') == stock_code:
+                    cur_pos = int(getattr(p, 'm_nVolume', 0) or 0)
+                    profit_rate = float(getattr(p, 'm_dProfitRate', 0) or 0)
+                    break
 
     _log_print('INFO', '[SIG] %s signals=%s pos=%d price=%.2f last_sell=%d b2_used=%s',
                stock_code, sig_str, cur_pos, current_price,
@@ -763,8 +767,7 @@ def _process_signal(stock_code, bar, today):
         state = ensure_state()
         state['stocks'][stock_code]['stop_loss_triggered'] = True
         state['daily_stop_count'] = g.daily_stop_count
-        state['stocks'][stock_code]['stop_loss_base'] = (
-            float(getattr(pos, 'avg_price', 0) or 0))
+        state['stocks'][stock_code]['stop_loss_base'] = current_price
         write_state(state)
         _log_print('WARN', '[STOP] %s stop-loss hit profit_rate=%.2f%%', stock_code, profit_rate * 100)
         return
@@ -973,71 +976,35 @@ def _get_history_bars(stock_code, count=60):
 
 
 def _do_order(stock_code, op_type, qty, limit_price):
-    """Use xtrading.order_stock -- standard QMT strategy API."""
+    """Use passorder -- the official QMT strategy order API.
+
+    Signature: passorder(opType, orderType, accountid, orderCode, prType,
+                         price, volume, strategyName, quickTrade, userOrderId, ContextInfo)
+    opType: 23=buy, 24=sell
+    orderType: 1101 = stock/count mode
+    prType: 11 = limit; 5 = market (no price needed)
+    """
     if qty <= 0:
         return None
     try:
-        kwargs = {}
-        if limit_price is not None:
-            kwargs['limit_price'] = limit_price
-            kwargs['price_type'] = xtrading.ORDER_PRICE_TYPE_LIMIT
-        order_id = xtrading.order_stock(stock_code, qty, op_type, **kwargs)
-        if order_id is None or order_id == '':
-            _log_print('ERROR', '[ORDER] %s order failed, empty order_id', stock_code)
+        # quickTrade=2: immediate execution. Strategy already has trade-count guard.
+        order_id = passorder(
+            op_type,                          # 23 buy / 24 sell
+            1101,                             # orderType: stock, count mode
+            ACCOUNT_ID,                       # account ID
+            stock_code,                       # orderCode: stock code
+            11,                               # prType: limit order
+            limit_price if limit_price else 0,  # limit price (0 = market)
+            qty,                              # volume in shares
+            '半仓滚动',                        # strategy name
+            2,                                # quickTrade: 2 = immediate
+            '',                               # userOrderId / remark
+            _ctx,                             # ContextInfo
+        )
+        if order_id is None or order_id == '' or order_id == 0:
+            _log_print('ERROR', '[ORDER] %s passorder failed, empty order_id', stock_code)
             return None
         return order_id
     except Exception as e:
-        _log_print('ERROR', '[ORDER] %s order exception: %s', stock_code, str(e))
+        _log_print('ERROR', '[ORDER] %s passorder exception: %s', stock_code, str(e))
         return None
-
-
-# --- xtrading / xttrader compatibility ---
-try:
-    from xtquant import xtrading
-except ImportError:
-    try:
-        import xtrading
-    except ImportError:
-        try:
-            from xtquant import xttrader as xtrading
-        except ImportError:
-            try:
-                import xttrader as xtrading
-            except ImportError:
-                class _XtradingStub:
-                    ORDER_TYPE_BUY = 23
-                    ORDER_TYPE_SELL = 24
-                    ORDER_PRICE_TYPE_LIMIT = 50
-                    ORDER_PRICE_TYPE_MARKET = 51
-
-                    @staticmethod
-                    def query_stock_position(stock_code):
-                        return None
-
-                    @staticmethod
-                    def query_account_data():
-                        return None
-
-                    @staticmethod
-                    def order_stock(stock_code, qty, order_type, **kwargs):
-                        print('[STUB] order %s %d type=%s' % (stock_code, qty, order_type))
-                        return 'stub_order_%s' % stock_code
-
-                xtrading = _XtradingStub()
-                print('[WARN] xtrading/xttrader not found, using stub')
-
-# --- xttrader compat patches ---
-_mod_name = getattr(xtrading, '__name__', '')
-if 'xttrader' in _mod_name and 'stub' not in _mod_name.lower():
-    if not hasattr(xtrading, 'query_stock_position'):
-        xtrading.query_stock_position = lambda stock_code: None
-    if not hasattr(xtrading, 'query_account_data'):
-        xtrading.query_account_data = lambda: None
-    if not hasattr(xtrading, 'ORDER_TYPE_BUY'):
-        xtrading.ORDER_TYPE_BUY = 23
-        xtrading.ORDER_TYPE_SELL = 24
-        xtrading.ORDER_PRICE_TYPE_LIMIT = 50
-        xtrading.ORDER_PRICE_TYPE_MARKET = 51
-    if not hasattr(xtrading, 'order_stock'):
-        xtrading.order_stock = lambda stock_code, qty, order_type, **kwargs: 'stub_%s' % stock_code
-    print('[WARN] xttrader detected, patched with xtrading compat stubs')
