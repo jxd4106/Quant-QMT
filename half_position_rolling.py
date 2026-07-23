@@ -424,7 +424,7 @@ def _heartbeat(now_time):
 
 def _diagnostic_scan(now_time):
     """Every 10 min (with heartbeat) scan all stocks & log signal status -- no trading.
-    Does NOT filter by trading hours so it works even after market close."""
+    Also queries actual position from QMT so user sees real holdings."""
     for stock_code in _pool_codes:
         bar = _get_latest_bar(stock_code)
         if bar is None:
@@ -436,6 +436,18 @@ def _diagnostic_scan(now_time):
             _log_print('WARN', '[SCAN] %s skip: history=%s', stock_code,
                        'None' if hist is None else '%d bars' % len(hist['close']))
             continue
+
+        # Query real position
+        cur_pos = 0
+        try:
+            positions = get_trade_detail_data(ACCOUNT_ID, 'STOCK', 'POSITION')
+            if positions:
+                for p in positions:
+                    if getattr(p, 'm_strInstrumentID', '') == stock_code:
+                        cur_pos = int(getattr(p, 'm_nVolume', 0) or 0)
+                        break
+        except Exception:
+            pass
 
         close_arr = hist['close'].copy()
         open_arr = hist['open'].copy()
@@ -466,10 +478,11 @@ def _diagnostic_scan(now_time):
         above_ma20 = 'ABOVE' if ind['close_ab_ma20'][i] else 'BELOW'
         # Show last 5 history closes + current bar to debug MA20
         hist_tail = [round(x, 2) for x in close_arr[max(0, i-4):i].tolist()]
-        _log_print('INFO', '[SCAN] %s(%s) price=%.2f ma20=%.2f %s signals=%s last_sell=%d b2=%s hist_tail=%s',
+        _log_print('INFO', '[SCAN] %s(%s) price=%.2f ma20=%.2f %s signals=%s pos=%d last_sell=%d b2=%s hist_tail=%s',
                    name, stock_code, current_price,
                    ind['ma20'][i] if not np.isnan(ind['ma20'][i]) else 0,
                    above_ma20, sig_str,
+                   cur_pos,
                    g.last_sell_qty.get(stock_code, 0),
                    'Y' if g.b2_used.get(stock_code) else 'N',
                    hist_tail)
