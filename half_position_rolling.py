@@ -441,10 +441,15 @@ def _diagnostic_scan(now_time):
         cur_pos = 0
         try:
             positions = get_trade_detail_data(ACCOUNT_ID, 'STOCK', 'POSITION')
+            _log_print('INFO', '[SCAN-POS] positions type=%s len=%d',
+                       type(positions).__name__, len(positions) if positions else 0)
             if positions:
-                for p in positions:
-                    if getattr(p, 'm_strInstrumentID', '') == stock_code:
-                        cur_pos = int(getattr(p, 'm_nVolume', 0) or 0)
+                for idx, p in enumerate(positions):
+                    sid = getattr(p, 'm_strInstrumentID', '')
+                    vol = getattr(p, 'm_nVolume', 0)
+                    _log_print('INFO', '[SCAN-POS] [%d] code=%s volume=%s', idx, sid, vol)
+                    if sid == stock_code:
+                        cur_pos = int(vol or 0)
                         break
         except Exception:
             pass
