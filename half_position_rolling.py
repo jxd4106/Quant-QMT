@@ -445,10 +445,11 @@ def _diagnostic_scan(now_time):
                        type(positions).__name__, len(positions) if positions else 0)
             if positions:
                 for idx, p in enumerate(positions):
-                    sid = getattr(p, 'm_strInstrumentID', '')
+                    sid = str(getattr(p, 'm_strInstrumentID', ''))
                     vol = getattr(p, 'm_nVolume', 0)
                     _log_print('INFO', '[SCAN-POS] [%d] code=%s volume=%s', idx, sid, vol)
-                    if sid == stock_code:
+                    # Match exact or suffix: 603501, 603501.SH, m_strInstrumentID='603501' all valid
+                    if sid == stock_code or sid in stock_code or stock_code in sid:
                         cur_pos = int(vol or 0)
                         break
         except Exception:
